@@ -1,6 +1,8 @@
-# RNN Seq2seq NMT
+# Transformer / Universal Transformer
 
-Standard encoder-decoder NMT (following Google’s Neural Machine Translation System: Bridging the Gap between Human and Machine Translation Y.Wu et el)
+Transformer ('Attention is all you need' A. Vaswani et el.)
+
+Universal Transformer ('Universal Transformer' M. Dehghani et. el)
 
 ## Requirements
 
