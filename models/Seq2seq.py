@@ -192,20 +192,18 @@ class Seq2seq(nn.Module):
 			emb_src = self.embedding_dropout(self.enc_embedder(src))
 		enc_outputs, enc_var = self.enc(emb_src, src_mask=src_mask)
 
+		# record
 		logps = torch.Tensor([-1e-4]).repeat(batch,length_out,self.dec_vocab_size).type(
 			torch.FloatTensor).to(device=device)
 		dec_outputs = torch.Tensor([0]).repeat(batch,length_out,self.dim_model).type(
 			torch.FloatTensor).to(device=device)
-
-		preds = torch.Tensor([PAD]).repeat(batch,length_out).type(
-			torch.LongTensor).to(device=device)
-		preds[:, 0] =  torch.Tensor([BOS]).type(
-			torch.LongTensor).to(device=device)	# b x len - [<BOS> <PAD> <PAD> ...]
 		preds_save = torch.Tensor([PAD]).repeat(batch,length_out).type(
 			torch.LongTensor).to(device=device) 	# used to update pred history
-		preds_save[:, 0] =  torch.Tensor([BOS]).type(
-			torch.LongTensor).to(device=device)
 
+		# start from length = 1
+		preds = torch.Tensor([BOS]).repeat(batch,1).type(
+			torch.LongTensor).to(device=device)
+		preds_save[:, 0] = preds[:, 0]
 
 		for i in range(1, self.max_seq_len):
 
@@ -213,7 +211,7 @@ class Seq2seq(nn.Module):
 			# import pdb; pdb.set_trace()
 
 			tgt_mask = ((_get_pad_mask(preds).to(device=device)
-				& _get_subsequent_mask(self.max_seq_len).to(device=device)))
+				& _get_subsequent_mask(preds.size(-1)).to(device=device)))
 			if self.dec_emb_proj_flag:
 				emb_tgt = self.dec_emb_proj(self.dec_embedder(preds))
 			else:
@@ -222,15 +220,90 @@ class Seq2seq(nn.Module):
 				tgt_mask=tgt_mask, src_mask=src_mask)
 			logit = self.out(dec_output)
 			logp = torch.log_softmax(logit, dim=2)
-			pred = logp.data.topk(1)[1]
+			pred = logp.data.topk(1)[1] # b x :i
 
 			# b x len x dim_model - [:,0,:] is dummy 0's
 			dec_outputs[:, i, :] = dec_output[:, i-1]
 			# b x len x vocab_size - [:,0,:] is dummy -1e-4's # individual logps
 			logps[:, i, :] = logp[:, i-1, :]
+			# b x len - [:,0] is BOS
 			preds_save[:, i] = pred[:, i-1].view(-1)
-			preds = preds_save.clone()
 
+			# append current pred, length+1
+			preds = torch.cat((preds,pred[:, i-1]),dim=1)
+
+		if not debug_flag:
+			return preds, logps, dec_outputs
+		else:
+			return preds, logps, dec_outputs, enc_var, dec_var
+
+
+	def forward_eval_fast(self, src, debug_flag=False, use_gpu=True):
+
+		"""
+			require large memory - run on cpu
+		"""
+
+		# import pdb; pdb.set_trace()
+
+		# check gpu
+		global device
+		device = check_device(use_gpu)
+
+		batch = src.size(0)
+		length_out = self.max_seq_len
+
+		# run enc dec
+		src_mask = _get_pad_mask(src).to(device=device)
+		if self.enc_emb_proj_flag:
+			emb_src = self.enc_emb_proj(self.embedding_dropout(self.enc_embedder(src)))
+		else:
+			emb_src = self.embedding_dropout(self.enc_embedder(src))
+		enc_outputs, enc_var = self.enc(emb_src, src_mask=src_mask)
+
+		# record
+		logps = torch.Tensor([-1e-4]).repeat(batch,length_out,self.dec_vocab_size).type(
+			torch.FloatTensor).to(device=device)
+		dec_outputs = torch.Tensor([0]).repeat(batch,length_out,self.dim_model).type(
+			torch.FloatTensor).to(device=device)
+		preds_save = torch.Tensor([PAD]).repeat(batch,length_out).type(
+			torch.LongTensor).to(device=device) 	# used to update pred history
+
+		# start from length = 1
+		preds = torch.Tensor([BOS]).repeat(batch,1).type(
+			torch.LongTensor).to(device=device)
+		preds_save[:, 0] = preds[:, 0]
+
+		for i in range(1, self.max_seq_len):
+
+			# gen: 0-30; ref: 1-31
+			# import pdb; pdb.set_trace()
+
+			tgt_mask = ((_get_pad_mask(preds).to(device=device)
+				& _get_subsequent_mask(preds.size(-1)).to(device=device)))
+			if self.dec_emb_proj_flag:
+				emb_tgt = self.dec_emb_proj(self.dec_embedder(preds))
+			else:
+				emb_tgt = self.dec_embedder(preds)
+			if i == 1:
+				cache_decslf = None
+				cache_encdec = None
+			dec_output, dec_var, *_, cache_decslf, cache_encdec = self.dec(
+				emb_tgt, enc_outputs, tgt_mask=tgt_mask, src_mask=src_mask,
+				decode_speedup=True, cache_decslf=cache_decslf, cache_encdec=cache_encdec)
+			logit = self.out(dec_output)
+			logp = torch.log_softmax(logit, dim=2)
+			pred = logp.data.topk(1)[1] # b x :i
+
+			# b x len x dim_model - [:,0,:] is dummy 0's
+			dec_outputs[:, i, :] = dec_output[:, i-1]
+			# b x len x vocab_size - [:,0,:] is dummy -1e-4's # individual logps
+			logps[:, i, :] = logp[:, i-1, :]
+			# b x len - [:,0] is BOS
+			preds_save[:, i] = pred[:, i-1].view(-1)
+
+			# append current pred, length+1
+			preds = torch.cat((preds,pred[:, i-1]),dim=1)
 
 		if not debug_flag:
 			return preds, logps, dec_outputs
@@ -264,11 +337,8 @@ class Seq2seq(nn.Module):
 
 		eos_mask = torch.BoolTensor([False]).repeat(batch * beam_width).to(device=device)
 		len_map = torch.Tensor([1]).repeat(batch * beam_width).to(device=device)
-
-		preds = torch.Tensor([PAD]).repeat(batch, self.max_seq_len).type(
+		preds = torch.Tensor([BOS]).repeat(batch, 1).type(
 			torch.LongTensor).to(device=device)
-		preds[:, 0] =  torch.Tensor([BOS]).type(
-			torch.LongTensor).to(device=device)	# b x len - [<BOS> <PAD> <PAD> ...]
 
 		# repeat for beam_width times
 		# a b c d -> aaa bbb ccc ddd
@@ -278,7 +348,7 @@ class Seq2seq(nn.Module):
 		# b x len x dim_model -> (b x beam_width) x len x dim_model
 		enc_outputs_expand = enc_outputs.repeat(1, beam_width, 1).view(-1, length_in, self.dim_model)
 		# (b x beam_width) x len
-		preds_expand = preds.repeat(1, beam_width).view(-1, self.max_seq_len)
+		preds_expand = preds.repeat(1, beam_width).view(-1, preds.size(-1))
 		# (b x beam_width)
 		scores_expand = torch.Tensor([0]).repeat(batch * beam_width).type(
 			torch.FloatTensor).to(device=device)
@@ -291,7 +361,7 @@ class Seq2seq(nn.Module):
 
 			# Get k candidates for each beam, k^2 candidates in total (k=beam_width)
 			tgt_mask_expand = ((_get_pad_mask(preds_expand).to(device=device)
-				& _get_subsequent_mask(self.max_seq_len).to(device=device)))
+				& _get_subsequent_mask(preds_expand.size(-1)).to(device=device)))
 			if self.dec_emb_proj_flag:
 				emb_tgt_expand = self.dec_emb_proj(self.dec_embedder(preds_expand))
 			else:
@@ -319,7 +389,7 @@ class Seq2seq(nn.Module):
 					.contiguous().view(-1)
 				scores_expand = score_select
 				pred_select = pred.reshape(batch, -1)[:, :beam_width].contiguous().view(-1)
-				preds_expand[:, i] = pred_select
+				preds_expand = torch.cat((preds_expand,pred_select.unsqueeze(-1)),dim=1)
 
 			else:
 				# keep only 1 candidate when hitting eos
@@ -343,12 +413,16 @@ class Seq2seq(nn.Module):
 				# Copy the corresponding previous tokens.
 				preds_expand[:, :i] = preds_expand[r_idxs.view(-1), :i] # (b x beam_width) x i
 				# Set the best tokens in this beam search step
-				preds_expand[:, i] = pred_select # (b x beam_width)
+				preds_expand = torch.cat((preds_expand, pred_select.unsqueeze(-1)),dim=1)
 
 			# locate the eos in the generated sequences
 			eos_mask = (pred_select == EOS) + eos_mask
 			len_map = len_map + torch.Tensor([1]).repeat(batch * beam_width).to(
 				device=device).masked_fill(eos_mask, 0)
+
+			# early stop
+			if sum(eos_mask) == eos_mask.size(0):
+				break
 
 		# select the best candidate
 		preds = preds_expand.reshape(batch, -1)[:, :self.max_seq_len].contiguous() # b x len
@@ -360,6 +434,138 @@ class Seq2seq(nn.Module):
 		# scores = scores_expand.reshape(batch, -1)[:, -1].contiguous() # b
 
 		return preds
+
+
+	def forward_translate_fast(self, src, beam_width=1, penalty_factor=1, use_gpu=True):
+
+		"""
+			require large memory - run on cpu
+		"""
+
+		# import pdb; pdb.set_trace()
+
+		# check gpu
+		global device
+		device = check_device(use_gpu)
+
+		# run dd
+		src_mask = _get_pad_mask(src).to(device=device) # b x 1 x len
+		if self.enc_emb_proj_flag:
+			emb_src = self.enc_emb_proj(self.enc_embedder(src))
+		else:
+			emb_src = self.enc_embedder(src)
+		enc_outputs, *_ = self.enc(emb_src, src_mask=src_mask) # b x len x dim_model
+
+		batch = src.size(0)
+		length_in = src.size(1)
+		length_out = self.max_seq_len
+
+		eos_mask = torch.BoolTensor([False]).repeat(batch * beam_width).to(device=device)
+		len_map = torch.Tensor([1]).repeat(batch * beam_width).to(device=device)
+		preds = torch.Tensor([BOS]).repeat(batch, 1).type(
+			torch.LongTensor).to(device=device)
+
+		# repeat for beam_width times
+		# a b c d -> aaa bbb ccc ddd
+
+		# b x 1 x len -> (b x beam_width) x 1 x len
+		src_mask_expand = src_mask.repeat(1, beam_width, 1).view(-1, 1, length_in)
+		# b x len x dim_model -> (b x beam_width) x len x dim_model
+		enc_outputs_expand = enc_outputs.repeat(1, beam_width, 1).view(-1, length_in, self.dim_model)
+		# (b x beam_width) x len
+		preds_expand = preds.repeat(1, beam_width).view(-1, preds.size(-1))
+		# (b x beam_width)
+		scores_expand = torch.Tensor([0]).repeat(batch * beam_width).type(
+			torch.FloatTensor).to(device=device)
+
+		# loop over sequence length
+		for i in range(1, self.max_seq_len):
+
+			# gen: 0-30; ref: 1-31
+			# import pdb; pdb.set_trace()
+
+			# Get k candidates for each beam, k^2 candidates in total (k=beam_width)
+			tgt_mask_expand = ((_get_pad_mask(preds_expand).to(device=device)
+				& _get_subsequent_mask(preds_expand.size(-1)).to(device=device)))
+			if self.dec_emb_proj_flag:
+				emb_tgt_expand = self.dec_emb_proj(self.dec_embedder(preds_expand))
+			else:
+				emb_tgt_expand = self.dec_embedder(preds_expand)
+
+			if i == 1:
+				cache_decslf = None
+				cache_encdec = None
+			dec_output_expand, *_, cache_decslf, cache_encdec = self.dec(
+				emb_tgt_expand, enc_outputs_expand,
+				tgt_mask=tgt_mask_expand, src_mask=src_mask_expand,
+				decode_speedup=True, cache_decslf=cache_decslf, cache_encdec=cache_encdec)
+
+			logit_expand = self.out(dec_output_expand)
+			# (b x beam_width) x len x vocab_size
+			logp_expand = torch.log_softmax(logit_expand, dim=2)
+			# (b x beam_width) x len x beam_width
+			score_expand, pred_expand = logp_expand.data.topk(beam_width)
+
+			# select current slice
+			dec_output = dec_output_expand[:, i-1]	# (b x beam_width) x dim_model - nouse
+			logp = logp_expand[:, i-1, :] 	# (b x beam_width) x vocab_size - nouse
+			pred = pred_expand[:, i-1] 		# (b x beam_width) x beam_width
+			score = score_expand[:, i-1]		# (b x beam_width) x beam_width
+
+			# select k candidates from k^2 candidates
+			if i == 1:
+				# inital state, keep first k candidates
+				# b x (beam_width x beam_width) -> b x (beam_width) -> (b x beam_width) x 1
+				score_select = scores_expand + score.reshape(batch, -1)[:,:beam_width]\
+					.contiguous().view(-1)
+				scores_expand = score_select
+				pred_select = pred.reshape(batch, -1)[:, :beam_width].contiguous().view(-1)
+				preds_expand = torch.cat((preds_expand,pred_select.unsqueeze(-1)),dim=1)
+
+			else:
+				# keep only 1 candidate when hitting eos
+				# (b x beam_width) x beam_width
+				eos_mask_expand = eos_mask.reshape(-1,1).repeat(1, beam_width)
+				eos_mask_expand[:,0] = False
+				# (b x beam_width) x beam_width
+				score_temp = scores_expand.reshape(-1,1) + score.masked_fill(
+					eos_mask.reshape(-1,1), 0).masked_fill(eos_mask_expand, -1e9)
+				# length penalty
+				score_temp = score_temp / (len_map.reshape(-1,1) ** penalty_factor)
+				# select top k from k^2
+				# (b x beam_width^2 -> b x beam_width)
+				score_select, pos = score_temp.reshape(batch, -1).topk(beam_width)
+				scores_expand = score_select.view(-1)
+				# select correct elements according to pos
+				pos = (pos + torch.range(0, (batch - 1) * (beam_width**2), (beam_width**2)).to(
+					device=device).reshape(batch, 1)).long()
+				r_idxs, c_idxs = pos // beam_width, pos % beam_width # b x beam_width
+				pred_select = pred[r_idxs, c_idxs].view(-1) # b x beam_width -> (b x beam_width)
+				# Copy the corresponding previous tokens.
+				preds_expand[:, :i] = preds_expand[r_idxs.view(-1), :i] # (b x beam_width) x i
+				# Set the best tokens in this beam search step
+				preds_expand = torch.cat((preds_expand, pred_select.unsqueeze(-1)),dim=1)
+
+			# locate the eos in the generated sequences
+			eos_mask = (pred_select == EOS) + eos_mask
+			len_map = len_map + torch.Tensor([1]).repeat(batch * beam_width).to(
+				device=device).masked_fill(eos_mask, 0)
+
+			# early stop
+			if sum(eos_mask) == eos_mask.size(0):
+				break
+
+		# select the best candidate
+		preds = preds_expand.reshape(batch, -1)[:, :self.max_seq_len].contiguous() # b x len
+		scores = scores_expand.reshape(batch, -1)[:, 0].contiguous() # b
+
+		# select the worst candidate
+		# preds = preds_expand.reshape(batch, -1)
+		# [:, (beam_width - 1)*length : (beam_width)*length].contiguous() # b x len
+		# scores = scores_expand.reshape(batch, -1)[:, -1].contiguous() # b
+
+		return preds
+
 
 
 	def check_var(self, var_name, var_val_set=None):

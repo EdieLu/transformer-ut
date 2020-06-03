@@ -93,14 +93,23 @@ def translate(test_set, load_dir, test_path_out, use_gpu,
 				src_ids = src_ids[:,:src_len].to(device=device)
 				tgt_ids = tgt_ids.to(device=device)
 
-				preds = model.forward_translate(
-					src=src_ids, beam_width=beam_width, use_gpu=use_gpu)
+				# import pdb; pdb.set_trace()
+				time1 = time.time()
+				if next(model.parameters()).is_cuda:
+					preds = model.forward_translate(src=src_ids,
+							beam_width=beam_width, use_gpu=use_gpu)
+				else:
+					preds = model.forward_translate_fast(src=src_ids,
+							beam_width=beam_width, use_gpu=use_gpu)
+				time2 = time.time()
+				print(time2-time1)
 
 				# memory usage
 				mem_kb, mem_mb, mem_gb = get_memory_alloc()
 				mem_mb = round(mem_mb, 2)
 				print('Memory used: {0:.2f} MB'.format(mem_mb))
 				print(idx, len(evaliter))
+				torch.cuda.empty_cache()
 
 				# write to file
 				seqlist = preds[:,1:]

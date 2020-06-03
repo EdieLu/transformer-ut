@@ -174,11 +174,11 @@ class Dataset(object):
 			src_sentence = self.src_sentences[idx]
 			tgt_sentence = self.tgt_sentences[idx]
 
+			# only apply on tgt side
+			src_words = src_sentence.strip().split()
 			if self.use_type == 'char':
-				src_words = src_sentence.strip()
 				tgt_words = tgt_sentence.strip()
 			elif self.use_type == 'word':
-				src_words = src_sentence.strip().split()
 				tgt_words = tgt_sentence.strip().split()
 
 			# ignore long seq of words
@@ -284,7 +284,7 @@ def load_pretrained_embedding(word2id, embedding_matrix, embedding_path):
 			items = line.strip().split()
 			if len(items) <= 2:
 				continue
-			word = items[0].lower()
+			word = items[0].lower() # assume uncased
 			if word in word2id:
 				id = word2id[word]
 				vector = np.array(items[1:])

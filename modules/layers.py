@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import math
+import time
 
 from utils.config import PAD, EOS, BOS, UNK
 
@@ -84,7 +85,8 @@ class TransformerDecoderLayer(nn.Module):
 
 
 	def forward(self, dec_input, enc_output,
-		decslf_attn_mask=None, encdec_attn_mask=None):
+		decslf_attn_mask=None, encdec_attn_mask=None,
+		decode_speedup=False, cache_decslf=None, cache_encdec=None):
 
 		"""
 			Args:
@@ -96,12 +98,18 @@ class TransformerDecoderLayer(nn.Module):
 		# import pdb; pdb.set_trace()
 
 		x = dec_input
-		y, att_decslf = self.decslf_attn(x, x, x, mask=decslf_attn_mask)
-		y, att_encdec = self.encdec_attn(y, enc_output, enc_output, mask=encdec_attn_mask)
+		y, att_decslf = self.decslf_attn(x, x, x, mask=decslf_attn_mask,
+			decode_speedup=decode_speedup, cache=cache_decslf)
+		cache_decslf = y.detach()[:,-1:,:]
+		y, att_encdec = self.encdec_attn(y, enc_output, enc_output, mask=encdec_attn_mask,
+			decode_speedup=decode_speedup, cache=cache_encdec)
+		cache_encdec = y.detach()[:,-1:,:]
 		y = self.pos_ffn(y)
 
-		return y, att_decslf, att_encdec
-
+		if decode_speedup:
+			return y, att_decslf, att_encdec, cache_decslf, cache_encdec
+		else:
+			return y, att_decslf, att_encdec
 
 # ----------------------------------------------------------------
 # sub-layers:
@@ -131,8 +139,12 @@ class MultiheadAttention(nn.Module):
 		self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
 
 
-	def forward(self, q, k, v, mask=None, prior_weight=None):
+	def forward(self, q, k, v, mask=None, prior_weight=None,
+		decode_speedup=False, cache=None):
 
+		"""
+			decode_speedup: only care about last query position in decoding
+		"""
 		# import pdb; pdb.set_trace()
 
 		d_k, d_v, n_head = self.d_k, self.d_v, self.n_head
@@ -151,20 +163,36 @@ class MultiheadAttention(nn.Module):
 		q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
 
 		if mask is not None:
-			# For head axis broadcasting. b x 1 x lq
+			# For head axis broadcasting. b x 1 x lq x lv
 			mask = mask.unsqueeze(1)
 		if prior_weight is not None:
-			# For head axis broadcasting. b x 1 x lq
+			# For head axis broadcasting. b x 1 x lq x lv
 			prior_weight = prior_weight.unsqueeze(1)
 
-		q, attn = self.attention(q, k, v, mask=mask, prior_weight=prior_weight)
+		if decode_speedup:
+			# speedup with cache
+			q = q[:, :, -1:, :] # b x n x 1 x dv
+			if mask is not None: mask = mask[:, :, -1:, :] # b x 1 x 1 x lv
+			if prior_weight is not None: prior_weight = prior_weight[:, :, -1:, :]
 
-		# Transpose to move the head dimension back: b x lq x n x dv
-		# Combine the last two dimensions to concatenate all the heads together:
-		# b x lq x (n*dv)
-		q = q.transpose(1, 2).contiguous().view(sz_b, len_q, -1)
-		q = self.dropout(self.fc(q))
-		q += residual
+			q, attn = self.attention(q, k, v, mask=mask, prior_weight=prior_weight)
+			# Transpose to move the head dimension back: b x 1 x n x dv
+			q = q.transpose(1, 2).contiguous().view(sz_b, 1, -1)
+			# Combine the last two dimensions to concatenate all the heads together:
+			q = self.dropout(self.fc(q)) # b x 1 x (n*dv)
+			q += residual[:,-1:,:]
+
+			if len_q != 1:
+				assert type(cache) != type(None)
+				q = torch.cat((cache, q), dim=1) # b x lq x n*dv
+
+		else:
+			q, attn = self.attention(q, k, v, mask=mask, prior_weight=prior_weight)
+			# Transpose to move the head dimension back: b x lq x n x dv
+			q = q.transpose(1, 2).contiguous().view(sz_b, len_q, -1)
+			# Combine the last two dimensions to concatenate all the heads together:
+			q = self.dropout(self.fc(q)) # b x lq x (n*dv)
+			q += residual
 
 		return q, attn
 
@@ -185,7 +213,6 @@ class ScaledDotProductAttention(nn.Module):
 	def forward(self, q, k, v, mask=None, prior_weight=None):
 
 		# import pdb; pdb.set_trace()
-
 		attn = torch.matmul(q / self.temperature, k.transpose(2, 3))
 
 		if prior_weight is not None:

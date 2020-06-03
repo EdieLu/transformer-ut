@@ -32,7 +32,7 @@ class Encoder(nn.Module):
 
 		super(Encoder, self).__init__()
 
-		upperbound_seq_len = 200 # upper boundary of seq_len for both train and eval
+		upperbound_seq_len = 500 # upper boundary of seq_len for both train and eval
 
 		# layer [1 x num_layers x dim_model]
 		self.layer_signal = _gen_position_signal(num_layers, dim_model)
