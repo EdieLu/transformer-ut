@@ -32,6 +32,7 @@ def load_arguments(parser):
 	parser.add_argument('--use_type', type=str, default='word', help='word | char')
 
 	# model
+	parser.add_argument('--share_embedder', type=str, default='False', help='share embedder or not')
 	parser.add_argument('--embedding_size_enc', type=int, default=200, help='encoder embedding size')
 	parser.add_argument('--embedding_size_dec', type=int, default=200, help='decoder embedding size')
 	parser.add_argument('--num_heads', type=int, default=8, help='multi head attention')
@@ -55,7 +56,10 @@ def load_arguments(parser):
 	parser.add_argument('--num_epochs', type=int, default=10, help='number of training epoches')
 	parser.add_argument('--max_seq_len', type=int, default=32, help='maximum sequence length')
 	parser.add_argument('--batch_size', type=int, default=64, help='batch size')
-	parser.add_argument('--learning_rate', type=float, default=0.001, help='learning rate')
+	parser.add_argument('--minibatch_split', type=int, default=1, help='split the batch to avoid OOM')
+	parser.add_argument('--learning_rate', type=float, default=0.2, help='learning rate')
+	parser.add_argument('--learning_rate_init', type=float, default=0.0001, help='learning rate init')
+	parser.add_argument('--lr_warmup_steps', type=int, default=12000, help='lr warmup steps')
 	parser.add_argument('--normalise_loss', type=str, default='True', help='normalise loss or not')
 	parser.add_argument('--max_grad_norm', type=float, default=1.0,
 		help='optimiser gradient norm clipping: max grad norm')
@@ -108,13 +112,16 @@ def main():
 					checkpoint_every=config['checkpoint_every'],
 					print_every=config['print_every'],
 					learning_rate=config['learning_rate'],
+					learning_rate_init=config['learning_rate_init'],
+					lr_warmup_steps=config['lr_warmup_steps'],
 					eval_with_mask=config['eval_with_mask'],
 					use_gpu=config['use_gpu'],
 					max_grad_norm=config['max_grad_norm'],
 					max_count_no_improve=config['max_count_no_improve'],
 					max_count_num_rollback=config['max_count_num_rollback'],
 					keep_num=config['keep_num'],
-					normalise_loss=config['normalise_loss'])
+					normalise_loss=config['normalise_loss'],
+					minibatch_split=config['minibatch_split'])
 
 	# load train set
 	train_path_src = config['train_path_src']
@@ -150,6 +157,7 @@ def main():
 
 	# construct model
 	seq2seq = Seq2seq(vocab_size_enc, vocab_size_dec,
+					share_embedder=config['share_embedder'],
 					enc_embedding_size=config['embedding_size_enc'],
 					dec_embedding_size=config['embedding_size_dec'],
 					load_embedding_src=config['load_embedding_src'],

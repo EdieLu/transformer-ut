@@ -58,6 +58,11 @@ class Decoder(nn.Module):
 		self.norm = nn.LayerNorm(self.dim_model)
 
 
+	def expand_time(self, max_seq_len):
+
+		self.time_signal = _gen_position_signal(max_seq_len, self.dim_model)
+
+
 	def forward(self, tgt, memory,
 		tgt_mask=None, src_mask=None,
 		decode_speedup=False, cache_decslf=None, cache_encdec=None):

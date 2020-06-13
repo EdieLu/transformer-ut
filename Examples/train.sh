@@ -2,10 +2,11 @@
 #$ -S /bin/bash
 
 echo $HOSTNAME
+unset LD_PRELOAD
 export PATH=/home/mifs/ytl28/anaconda3/bin/:$PATH
 
-export CUDA_VISIBLE_DEVICES=2
-# export CUDA_VISIBLE_DEVICES=$X_SGE_CUDA_DEVICE
+# export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=$X_SGE_CUDA_DEVICE
 echo $CUDA_VISIBLE_DEVICES
 
 # python 3.6
@@ -32,16 +33,16 @@ export PYTHONBIN=/home/mifs/ytl28/anaconda3/envs/py13-cuda9/bin/python3
 # use_type='word'
 
 # option 2 - fairseq bpe
-savedir=models/en-de-debug/
-train_path_src=../lib/mustc-en-de-proc-fairseq/mustc/train/train.BPE.en
-train_path_tgt=../lib/mustc-en-de-proc-fairseq/mustc/train/train.BPE.de
-# dev_path_src=../lib/mustc-en-de-proc-fairseq/mustc/dev/dev.BPE.en
-# dev_path_tgt=../lib/mustc-en-de-proc-fairseq/mustc/dev/dev.BPE.de
-dev_path_src=None
-dev_path_tgt=None
-path_vocab_src=../lib/iwslt17_en_de/wmt17_en_de/vocab.en
-path_vocab_tgt=../lib/iwslt17_en_de/wmt17_en_de/vocab.de
-use_type='word'
+# savedir=models/en-de-debug/
+# train_path_src=../lib/mustc-en-de-proc-fairseq/mustc/train/train.BPE.en
+# train_path_tgt=../lib/mustc-en-de-proc-fairseq/mustc/train/train.BPE.de
+# # dev_path_src=../lib/mustc-en-de-proc-fairseq/mustc/dev/dev.BPE.en
+# # dev_path_tgt=../lib/mustc-en-de-proc-fairseq/mustc/dev/dev.BPE.de
+# dev_path_src=None
+# dev_path_tgt=None
+# path_vocab_src=../lib/iwslt17_en_de/wmt17_en_de/vocab.en
+# path_vocab_tgt=../lib/iwslt17_en_de/wmt17_en_de/vocab.de
+# use_type='word'
 
 # [iwslt2017 corpus]
 # savedir=models/en-de-v011/
@@ -55,12 +56,28 @@ use_type='word'
 # path_vocab_tgt=../lib/iwslt17_en_de/wmt17_en_de/vocab.de
 # use_type='word'
 
+# option 4 - fairseq bpe on src; char on tgt
+# loaddir=models/en-de-v004/checkpoints_epoch/16
+loaddir='None'
+savedir=models/en-de-v005/
+train_path_src=../lib/mustc-en-de-proc-fairseq/mustc/train/train.BPE.en
+train_path_tgt=../lib/mustc-en-de/train/txt/train.de
+# dev_path_src=../lib/mustc-en-de-proc-fairseq/mustc/dev/dev.BPE.en
+# dev_path_tgt=../lib/mustc-en-de/dev/txt/dev.de
+dev_path_src=None
+dev_path_tgt=None
+path_vocab_src=../lib/mustc-en-de-proc-fairseq/vocab.en
+path_vocab_tgt=../lib/mustc-en-de-proc-fairseq/vocab.de.char
+load_embedding_src=None
+load_embedding_tgt=None
+use_type='char'
+
 # ------------------------ MODEL --------------------------
-embedding_size_enc=300
-embedding_size_dec=300
+embedding_size_enc=512
+embedding_size_dec=512
 num_heads=8
 dim_model=512
-dim_feedforward=1024
+dim_feedforward=2048
 enc_layers=6
 dec_layers=6
 transformer_type='standard' # standard | universal
@@ -71,16 +88,21 @@ transformer_type='standard' # standard | universal
 checkpoint_every=1000
 print_every=200
 
-batch_size=200
-max_seq_len=50
+learning_rate_init=0.0001
+learning_rate=0.2
+lr_warmup_steps=16000
+
+batch_size=256
+minibatch_split=4
+max_seq_len=250
 num_epochs=50
+
 random_seed=300
 eval_with_mask=True
 max_count_no_improve=5
 max_count_num_rollback=2
 keep_num=2
 normalise_loss=True
-learning_rate=0.0001
 
 $PYTHONBIN /home/alta/BLTSpeaking/exp-ytl28/local-ytl/nmt-transformer/train.py \
 	--train_path_src $train_path_src \
@@ -109,6 +131,8 @@ $PYTHONBIN /home/alta/BLTSpeaking/exp-ytl28/local-ytl/nmt-transformer/train.py \
 	--num_epochs $num_epochs \
 	--use_gpu True \
 	--learning_rate $learning_rate \
+	--learning_rate_init $learning_rate_init \
+	--lr_warmup_steps $lr_warmup_steps \
 	--max_grad_norm 1.0 \
 	--checkpoint_every $checkpoint_every \
 	--print_every $print_every \
@@ -116,3 +140,5 @@ $PYTHONBIN /home/alta/BLTSpeaking/exp-ytl28/local-ytl/nmt-transformer/train.py \
 	--max_count_num_rollback $max_count_num_rollback \
 	--keep_num $keep_num \
 	--normalise_loss $normalise_loss \
+	--minibatch_split $minibatch_split \
+	--load $loaddir \

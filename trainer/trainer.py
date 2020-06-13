@@ -29,13 +29,16 @@ class Trainer(object):
 		print_every=100,
 		batch_size=256,
 		use_gpu=False,
-		learning_rate=0.001,
+		learning_rate=0.2,
+		learning_rate_init=0.0001,
+		lr_warmup_steps=12000,
 		max_grad_norm=1.0,
 		eval_with_mask=True,
 		max_count_no_improve=2,
 		max_count_num_rollback=2,
 		keep_num=1,
-		normalise_loss=True
+		normalise_loss=True,
+		minibatch_split=1
 		):
 
 		self.use_gpu = use_gpu
@@ -45,6 +48,8 @@ class Trainer(object):
 		self.checkpoint_every = checkpoint_every
 		self.print_every = print_every
 		self.learning_rate = learning_rate
+		self.learning_rate_init = learning_rate_init
+		self.lr_warmup_steps = lr_warmup_steps
 		self.max_grad_norm = max_grad_norm
 		self.eval_with_mask = eval_with_mask
 
@@ -63,8 +68,10 @@ class Trainer(object):
 		self.logger = logging.getLogger(__name__)
 		self.writer = torch.utils.tensorboard.writer.SummaryWriter(log_dir=self.expt_dir)
 
+		self.minibatch_split = minibatch_split
 		self.batch_size = batch_size
-		self.minibatch_size = int(self.batch_size / 2) # to be changed if OOM
+		self.minibatch_size = int(self.batch_size / self.minibatch_split) # to be changed if OOM
+
 
 	def _print_hyp(self,
 		out_count, src_ids, tgt_ids, src_id2word, tgt_id2word, seqlist):
@@ -81,6 +88,24 @@ class Trainer(object):
 			sys.stdout.buffer.write(outline)
 			out_count += 1
 		return out_count
+
+
+	def lr_scheduler(self, optimizer, step,
+		init_lr=0.0001, peak_lr=0.2, warmup_steps=12000):
+
+		""" Learning rate warmup + decay """
+
+		if step <= warmup_steps:
+			lr = step * 1. * (peak_lr - init_lr) / warmup_steps + init_lr
+		else:
+			lr = peak_lr * ((step - warmup_steps) ** (-0.5))
+
+		# print(step, lr)
+
+		for param_group in optimizer.param_groups:
+			param_group['lr'] = lr
+
+		return optimizer
 
 
 	def _evaluate_batches(self, model, dataset):
@@ -241,6 +266,7 @@ class Trainer(object):
 					tgt_ids[:,1:].reshape(-1), non_padding_mask_tgt[:,1:].reshape(-1))
 				loss.norm_term = 1.0 * torch.sum(non_padding_mask_tgt[:,1:])
 
+			# import pdb; pdb.set_trace()
 			# Backward propagation: accumulate gradient
 			if self.normalise_loss: loss.normalise()
 			loss.acc_loss /= n_minibatch
@@ -299,6 +325,10 @@ class Trainer(object):
 			model.train(True)
 			trainiter = iter(train_set.iter_loader)
 			for idx in range(steps_per_epoch):
+
+				self.optimizer.optimizer = self.lr_scheduler(
+					self.optimizer.optimizer, idx, init_lr=self.learning_rate_init,
+					peak_lr=self.learning_rate, warmup_steps=self.lr_warmup_steps)
 
 				# load batch items
 				batch_items = trainiter.next()

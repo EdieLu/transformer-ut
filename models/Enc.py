@@ -61,6 +61,11 @@ class Encoder(nn.Module):
 		self.norm = nn.LayerNorm(self.dim_model, eps=1e-6)
 
 
+	def expand_time(self, max_seq_len):
+
+		self.time_signal = _gen_position_signal(max_seq_len, self.dim_model)
+
+
 	def forward(self, src, src_mask=None):
 
 		"""

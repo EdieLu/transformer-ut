@@ -25,6 +25,7 @@ class Seq2seq(nn.Module):
 	def __init__(self,
 		enc_vocab_size,
 		dec_vocab_size,
+		share_embedder,
 		enc_embedding_size = 200,
 		dec_embedding_size = 200,
 		load_embedding_src = None,
@@ -93,6 +94,10 @@ class Seq2seq(nn.Module):
 		else:
 			self.dec_embedder = nn.Embedding(self.dec_vocab_size,
 				self.dec_embedding_size, sparse=False, padding_idx=PAD)
+
+		if share_embedder:
+			assert enc_vocab_size == dec_vocab_size
+			self.enc_embedder = self.dec_embedder
 
 		self.enc_emb_proj_flag = False
 		if self.enc_embedding_size != self.dim_model:

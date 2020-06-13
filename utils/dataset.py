@@ -188,8 +188,8 @@ class Dataset(object):
 				continue
 
 			# emtry seq
-			if len(src_words) == 0 or len(tgt_words) == 0:
-				continue
+			# if len(src_words) == 0 or len(tgt_words) == 0:
+			# 	continue
 
 			# source
 			src_ids = []

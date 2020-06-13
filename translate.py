@@ -69,6 +69,8 @@ def translate(test_set, load_dir, test_path_out, use_gpu,
 
 	# reset batch_size:
 	model.max_seq_len = max_seq_len
+	model.enc.expand_time(max_seq_len)
+	model.dec.expand_time(max_seq_len)
 	print('max seq len {}'.format(model.max_seq_len))
 	sys.stdout.flush()
 
@@ -81,6 +83,7 @@ def translate(test_set, load_dir, test_path_out, use_gpu,
 		model.eval()
 		with torch.no_grad():
 			for idx in range(len(evaliter)):
+
 				batch_items = evaliter.next()
 
 				# load data
@@ -94,50 +97,63 @@ def translate(test_set, load_dir, test_path_out, use_gpu,
 				tgt_ids = tgt_ids.to(device=device)
 
 				# import pdb; pdb.set_trace()
-				time1 = time.time()
-				if next(model.parameters()).is_cuda:
-					preds = model.forward_translate(src=src_ids,
-							beam_width=beam_width, use_gpu=use_gpu)
-				else:
-					preds = model.forward_translate_fast(src=src_ids,
-							beam_width=beam_width, use_gpu=use_gpu)
-				time2 = time.time()
-				print(time2-time1)
+				# split minibatch to avoid OOM
+				# if idx < 12: continue
 
-				# memory usage
-				mem_kb, mem_mb, mem_gb = get_memory_alloc()
-				mem_mb = round(mem_mb, 2)
-				print('Memory used: {0:.2f} MB'.format(mem_mb))
-				print(idx, len(evaliter))
-				torch.cuda.empty_cache()
+				n_minibatch = int(tgt_len / 100 + (tgt_len % 100 > 0))
+				minibatch_size = int(src_ids.size(0) / n_minibatch)
+				n_minibatch = int(src_ids.size(0) / minibatch_size +
+					(src_ids.size(0) % minibatch_size > 0))
 
-				# write to file
-				seqlist = preds[:,1:]
-				seqwords = _convert_to_words_batchfirst(seqlist, test_set.tgt_id2word)
+				for j in range(n_minibatch):
 
-				# import pdb; pdb.set_trace()
-				for i in range(len(seqwords)):
-					if src_lengths[i] == 0:
-						continue
-					words = []
-					for word in seqwords[i]:
-						if word == '<pad>':
-							continue
-						elif word == '<spc>':
-							words.append(' ')
-						elif word == '</s>':
-							break
-						else:
-							words.append(word)
-					if len(words) == 0:
-						outline = ''
+					print(idx+1, len(evaliter), '-', j+1, n_minibatch)
+
+					st = j * minibatch_size
+					ed = min((j+1) * minibatch_size, src_ids.size(0))
+					src_ids_sub = src_ids[st:ed,:]
+
+					time1 = time.time()
+					if next(model.parameters()).is_cuda:
+						preds = model.forward_translate(src=src_ids_sub,
+								beam_width=beam_width, use_gpu=use_gpu)
 					else:
-						if seqrev:
-							words = words[::-1]
-						outline = ' '.join(words)
-					f.write('{}\n'.format(outline))
+						preds = model.forward_translate_fast(src=src_ids_sub,
+								beam_width=beam_width, use_gpu=use_gpu)
+					time2 = time.time()
+					print(time2-time1)
 
-				sys.stdout.flush()
+					# write to file
+					seqlist = preds[:,1:]
+					seqwords = _convert_to_words_batchfirst(seqlist, test_set.tgt_id2word)
+
+					# import pdb; pdb.set_trace()
+
+					for i in range(len(seqwords)):
+						if src_lengths[i] == 0:
+							continue
+						words = []
+						for word in seqwords[i]:
+							if word == '<pad>':
+								continue
+							elif word == '<spc>':
+								words.append(' ')
+							elif word == '</s>':
+								break
+							else:
+								words.append(word)
+						if len(words) == 0:
+							outline = ''
+						else:
+							if seqrev:
+								words = words[::-1]
+							if test_set.use_type == 'word':
+								outline = ' '.join(words)
+							elif test_set.use_type == 'char':
+								outline = ''.join(words)
+						f.write('{}\n'.format(outline))
+
+					sys.stdout.flush()
 
 
 def main():
