@@ -47,9 +47,13 @@ class Trainer(object):
 		self.optimizer = None
 		self.checkpoint_every = checkpoint_every
 		self.print_every = print_every
+
 		self.learning_rate = learning_rate
 		self.learning_rate_init = learning_rate_init
 		self.lr_warmup_steps = lr_warmup_steps
+		if self.lr_warmup_steps == 0:
+			assert self.learning_rate == self.learning_rate_init
+
 		self.max_grad_norm = max_grad_norm
 		self.eval_with_mask = eval_with_mask
 
@@ -326,16 +330,17 @@ class Trainer(object):
 			trainiter = iter(train_set.iter_loader)
 			for idx in range(steps_per_epoch):
 
-				self.optimizer.optimizer = self.lr_scheduler(
-					self.optimizer.optimizer, idx, init_lr=self.learning_rate_init,
-					peak_lr=self.learning_rate, warmup_steps=self.lr_warmup_steps)
-
 				# load batch items
 				batch_items = trainiter.next()
 
 				# update macro count
 				step += 1
 				step_elapsed += 1
+
+				if self.lr_warmup_steps != 0:
+					self.optimizer.optimizer = self.lr_scheduler(
+						self.optimizer.optimizer, step, init_lr=self.learning_rate_init,
+						peak_lr=self.learning_rate, warmup_steps=self.lr_warmup_steps)
 
 				# Get loss
 				loss = self._train_batch(model, batch_items, train_set, step, total_steps)
@@ -525,7 +530,7 @@ class Trainer(object):
 
 			if optimizer is None:
 				optimizer = Optimizer(torch.optim.Adam(model.parameters(),
-					lr=self.learning_rate), max_grad_norm=self.max_grad_norm)
+					lr=self.learning_rate_init), max_grad_norm=self.max_grad_norm)
 			self.optimizer = optimizer
 
 		self.logger.info("Optimizer: %s, Scheduler: %s" %
