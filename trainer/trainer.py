@@ -29,9 +29,9 @@ class Trainer(object):
 		print_every=100,
 		batch_size=256,
 		use_gpu=False,
-		learning_rate=0.2,
-		learning_rate_init=0.0001,
-		lr_warmup_steps=12000,
+		learning_rate=0.00001,
+		learning_rate_init=0.0005,
+		lr_warmup_steps=16000,
 		max_grad_norm=1.0,
 		eval_with_mask=True,
 		max_count_no_improve=2,
@@ -95,7 +95,7 @@ class Trainer(object):
 
 
 	def lr_scheduler(self, optimizer, step,
-		init_lr=0.0001, peak_lr=0.2, warmup_steps=12000):
+		init_lr=0.00001, peak_lr=0.0005, warmup_steps=16000):
 
 		""" Learning rate warmup + decay """
 

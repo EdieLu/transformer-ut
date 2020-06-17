@@ -57,8 +57,8 @@ def load_arguments(parser):
 	parser.add_argument('--max_seq_len', type=int, default=32, help='maximum sequence length')
 	parser.add_argument('--batch_size', type=int, default=64, help='batch size')
 	parser.add_argument('--minibatch_split', type=int, default=1, help='split the batch to avoid OOM')
-	parser.add_argument('--learning_rate', type=float, default=0.2, help='learning rate')
-	parser.add_argument('--learning_rate_init', type=float, default=0.0001, help='learning rate init')
+	parser.add_argument('--learning_rate', type=float, default=0.00001, help='learning rate')
+	parser.add_argument('--learning_rate_init', type=float, default=0.0005, help='learning rate init')
 	parser.add_argument('--lr_warmup_steps', type=int, default=12000, help='lr warmup steps')
 	parser.add_argument('--normalise_loss', type=str, default='True', help='normalise loss or not')
 	parser.add_argument('--max_grad_norm', type=float, default=1.0,
