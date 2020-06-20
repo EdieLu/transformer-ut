@@ -8,6 +8,8 @@ Universal Transformer ('Universal Transformer' M. Dehghani et. el)
 - python 3.6
 - torch 1.2
 - tensorboard 1.14+
+- psutil
+- dill
 - CUDA 9
 
 ## Data
