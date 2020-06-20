@@ -411,7 +411,7 @@ class Seq2seq(nn.Module):
 				score_select, pos = score_temp.reshape(batch, -1).topk(beam_width)
 				scores_expand = score_select.view(-1)
 				# select correct elements according to pos
-				pos = (pos + torch.range(0, (batch - 1) * (beam_width**2), (beam_width**2)).to(
+				pos = (pos.float() + torch.range(0, (batch - 1) * (beam_width**2), (beam_width**2)).to(
 					device=device).reshape(batch, 1)).long()
 				r_idxs, c_idxs = pos // beam_width, pos % beam_width # b x beam_width
 				pred_select = pred[r_idxs, c_idxs].view(-1) # b x beam_width -> (b x beam_width)
@@ -426,7 +426,7 @@ class Seq2seq(nn.Module):
 				device=device).masked_fill(eos_mask, 0)
 
 			# early stop
-			if sum(eos_mask) == eos_mask.size(0):
+			if sum(eos_mask.int()) == eos_mask.size(0):
 				break
 
 		# select the best candidate
@@ -557,7 +557,7 @@ class Seq2seq(nn.Module):
 				device=device).masked_fill(eos_mask, 0)
 
 			# early stop
-			if sum(eos_mask) == eos_mask.size(0):
+			if sum(eos_mask.int()) == eos_mask.size(0):
 				break
 
 		# select the best candidate

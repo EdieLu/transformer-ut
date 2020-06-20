@@ -2,6 +2,7 @@
 #$ -S /bin/bash
 
 echo $HOSTNAME
+unset LD_PRELOAD
 export PATH=/home/mifs/ytl28/anaconda3/bin/:$PATH
 
 # export CUDA_VISIBLE_DEVICES=$X_SGE_CUDA_DEVICE
@@ -10,59 +11,54 @@ echo $CUDA_VISIBLE_DEVICES
 
 # python 3.6
 # pytorch 1.1
-source activate pt11-cuda9
-export PYTHONBIN=/home/mifs/ytl28/anaconda3/envs/pt11-cuda9/bin/python3
-# source activate py13-cuda9
-# export PYTHONBIN=/home/mifs/ytl28/anaconda3/envs/py13-cuda9/bin/python3
+# source activate pt11-cuda9
+# export PYTHONBIN=/home/mifs/ytl28/anaconda3/envs/pt11-cuda9/bin/python3
+source activate py13-cuda9
+export PYTHONBIN=/home/mifs/ytl28/anaconda3/envs/py13-cuda9/bin/python3
 
 # ----- dir ------
-# 1. fairseq BPE
-model=models/en-de-v008
-path_vocab_src=../lib/wmt17_en_de/wmt17_en_de/vocab.en
-path_vocab_tgt=../lib/wmt17_en_de/wmt17_en_de/vocab.de
+model=models/gec-v035
+path_vocab_src=/home/alta/BLTSpeaking/exp-ytl28/encdec/lib/vocab/clctotal+swbd.min-count4.en
+path_vocab_tgt=/home/alta/BLTSpeaking/exp-ytl28/encdec/lib/vocab/clctotal+swbd.min-count4.en
 use_type='word'
 
-# fname=eval_dev
-# ftst=../lib/mustc-en-de-proc-fairseq/mustc/dev/dev.BPE.en
-# seqlen=155
-fname=eval_tst-COMMON
-ftst=../lib/mustc-en-de-proc-fairseq/mustc/tst-COMMON/tst-COMMON.BPE.en
-seqlen=175
-# fname=eval_tst-HE
-# ftst=../lib/mustc-en-de-proc-fairseq/mustc/tst-HE/tst-HE.BPE.en
-# seqlen=120
-# fname=eval_tst_wmt17
-# ftst=../lib/wmt17_en_de/wmt17_en_de/test.en
-# seqlen=105
+libbase=/home/alta/BLTSpeaking/exp-ytl28/encdec/lib-bpe
 
-# 2. [fairseq bpe on src; char on tgt]
-# model=models/en-de-v007
-# path_vocab_src=../lib/mustc-en-de-proc-fairseq/vocab.en
-# path_vocab_tgt=../lib/mustc-en-de-proc-fairseq/vocab.de.char
-# use_type='char'
-#
-# fname=eval_train_h1000
-# ftst=../lib/mustc-en-de-proc-fairseq/mustc/train_h1000/train_h1000.BPE.en
-# seqlen=855
-# # fname=eval_dev
-# # ftst=../lib/mustc-en-de-proc-fairseq/mustc/dev/dev.BPE.en
-# # seqlen=665
-# # fname=eval_tst-COMMON
-# # ftst=../lib/mustc-en-de-proc-fairseq/mustc/tst-COMMON/tst-COMMON.BPE.en
-# # seqlen=850
-# # fname=eval_tst-HE
-# # ftst=../lib/mustc-en-de-proc-fairseq/mustc/tst-HE/tst-HE.BPE.en
-# # seqlen=570
+# fname=test_fce_test
+# ftst=/home/alta/BLTSpeaking/exp-ytl28/projects/lib/clc/test.src
+# seqlen=100
+
+# fname=test_clc
+# ftst=$libbase/clc/nobpe/clc-test.src
+# seqlen=125
+
+# fname=test_nict
+# ftst=/home/alta/BLTSpeaking/exp-ytl28/projects/lib/gec-nict/nict.src
+# seqlen=85
+
+# fname=test_nict_new
+# ftst=/home/alta/BLTSpeaking/exp-ytl28/projects/lib/gec-nict-new/nict.src
+# seqlen=85
+
+# fname=test_dtal
+# ftst=$libbase/dtal/nobpe/dtal.src
+# seqlen=165
+
+fname=test_dtal_asr # default segmanual
+ftst=/home/alta/BLTSpeaking/exp-ytl28/projects/lib/gec-dtal-asr/dtal-asr.src
+seqlen=165
 
 # ----- models ------
-batch_size=300
+beam_width=1
+batch_size=50
+use_gpu=True
 
-for i in `seq 1 1 19`
+for i in `seq 18 1 18`
 do
     echo $i
     ckpt=$i
 
-    $PYTHONBIN /home/alta/BLTSpeaking/exp-ytl28/local-ytl/nmt-base/translate.py \
+    $PYTHONBIN /home/alta/BLTSpeaking/exp-ytl28/local-ytl/nmt-transformer/translate.py \
         --test_path_src $ftst \
         --test_path_tgt $ftst \
         --seqrev False \

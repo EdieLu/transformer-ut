@@ -10,9 +10,9 @@ if ( $#argv != 1 ) then
 endif
 
 set LOG=$1
-set TRAIN=/home/alta/BLTSpeaking/exp-ytl28/projects/nmt-en-de/run-nmt/train.sh
+set TRAIN=/home/alta/BLTSpeaking/exp-ytl28/projects/gec-transformer/run/train.sh
 
-set CMD = `qsub -cwd -j yes -o $LOG -P esol -l hostname=air208.eng.cam.ac.uk -l qp=cuda-low -l gpuclass=pascal -l osrel='*' $TRAIN`
+set CMD = `qsub -cwd -j yes -o $LOG -P esol -l hostname=air209.eng.cam.ac.uk -l qp=cuda-low -l gpuclass=pascal -l osrel='*' $TRAIN`
 # set CMD = `qsub -cwd -j yes -o $LOG -P esol -l qp=cuda-low -l gpuclass='*' -l osrel='*' $TRAIN`
-# set CMD = `qsub -cwd -j yes -o $LOG -P esol -l hostname=air207.eng.cam.ac.uk -l qp=cuda-low -l gpuclass='*' -l osrel='*' $TRAIN`
+# set CMD = `qsub -cwd -j yes -o $LOG -P esol -l hostname=air206.eng.cam.ac.uk -l qp=cuda-low -l gpuclass='*' -l osrel='*' $TRAIN`
 echo $CMD

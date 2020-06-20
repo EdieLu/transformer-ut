@@ -7,37 +7,35 @@ cmddir=CMDs
 echo "---------------------------------------------" >> $cmddir/eval_bleu.cmds
 echo $command >> $cmddir/eval_bleu.cmds
 
-model=en-de-v006
-ckpt=15
-
-DETOK=../lib/mustc-en-de-proc-fairseq/mosesdecoder/scripts/tokenizer/detokenizer.perl
-bleu_scorer=./local/mosesdecoder/scripts/generic/multi-bleu-detok.perl
-
-# model=en-de-v011
-# ckpt=38
-
-fname=train_h1000 #dev | tst-COMMON | tst-HE | train_h1000
-# tail=_bm10
+# ---------- [model] -------------
+model=gec-v031
+ckpt=19
+libbase=/home/alta/BLTSpeaking/exp-ytl28/encdec/lib-bpe
 tail=
+# ---------- [files] -------------
 
+# fname=test_fce_test
+# ftst=/home/alta/BLTSpeaking/exp-ytl28/projects/lib/gec-clc/fce-test
 
-fout=models/$model/eval_$fname$tail/$ckpt
+# fname=test_clc
+# ftst=/home/alta/BLTSpeaking/exp-ytl28/projects/lib/gec-clc/clc
 
-# -- bpe raw --
-# refdir=../lib/mustc-en-de-proc/$fname/$fname.de.bpe50000
-# $bleu_scorer $fout/translate.txt < $refdir > $fout/bleu.log
+# fname=test_nict
+# ftst=/home/alta/BLTSpeaking/exp-ytl28/projects/lib/gec-nict/nict
 
-# -- bpe decoded --
-# refdir=../lib/mustc-en-de-proc/$fname/$fname.de.dec
-# python3 ./local/py-tools-v2/dec_bpe.py ../lib/mustc-en-de-proc/vocab/de-bpe-30000 $fout/translate.txt $fout/translate.txt.dec
-# $bleu_scorer $fout/translate.txt.dec < $refdir > $fout/bleu.log.dec
+# fname=test_nict_new
+# ftst=/home/alta/BLTSpeaking/exp-ytl28/projects/lib/gec-nict-new/nict
 
-# -- no bpe --
-# refdir=../lib/mustc-en-de-proc/$fname/$fname.de.dec
-# $bleu_scorer $fout/translate.txt < $refdir > $fout/bleu.log
+# fname=test_dtal
+# ftst=/home/alta/BLTSpeaking/exp-ytl28/projects/lib/gec-dtal/dtal
 
-# -- fairseq bpe --
-sed -r 's/(@@ )|(@@ ?$)//g' $fout/translate.txt > $fout/translate.txt.rmbpe
-$DETOK -l de < $fout/translate.txt.rmbpe > $fout/translate.txt.rmbpe.detok
-refdir=../lib/mustc-en-de/$fname/txt/$fname.de
-$bleu_scorer $fout/translate.txt.rmbpe.detok < $refdir > $fout/bleu.log
+fname=test_dtal_asr # default seg manual
+ftst=/home/alta/BLTSpeaking/exp-ytl28/projects/lib/gec-dtal-asr/dtal-asr
+
+# ---------- [score] -------------
+gleuscorer=./local/gleu/compute_gleu.py
+outdir=models/$model/$fname/$ckpt
+srcdir=$ftst.src$tail
+refdir=$ftst.tgt$tail
+
+python $gleuscorer -r $refdir -s $srcdir -o $outdir/translate.txt > $outdir/gleu.log &

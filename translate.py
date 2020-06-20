@@ -27,7 +27,6 @@ def load_arguments(parser):
 
 	# paths
 	parser.add_argument('--test_path_src', type=str, required=True, help='test src dir')
-	parser.add_argument('--test_path_tgt', type=str, required=True, help='test tgt dir')
 	parser.add_argument('--path_vocab_src', type=str, required=True, help='vocab src dir')
 	parser.add_argument('--path_vocab_tgt', type=str, required=True, help='vocab tgt dir')
 	parser.add_argument('--load', type=str, required=True, help='model load dir')
@@ -84,6 +83,7 @@ def translate(test_set, load_dir, test_path_out, use_gpu,
 		with torch.no_grad():
 			for idx in range(len(evaliter)):
 
+				print(idx+1, len(evaliter))
 				batch_items = evaliter.next()
 
 				# load data
@@ -100,18 +100,18 @@ def translate(test_set, load_dir, test_path_out, use_gpu,
 				# split minibatch to avoid OOM
 				# if idx < 12: continue
 
-				n_minibatch = int(tgt_len / 100 + (tgt_len % 100 > 0))
+				n_minibatch = int(tgt_len / 100 + tgt_len % 100 > 0)
 				minibatch_size = int(src_ids.size(0) / n_minibatch)
-				n_minibatch = int(src_ids.size(0) / minibatch_size +
-					(src_ids.size(0) % minibatch_size > 0))
+				n_minibatch = int(src_ids.size(0) / minibatch_size) + \
+					(src_ids.size(0) % minibatch_size > 0)
 
 				for j in range(n_minibatch):
-
-					print(idx+1, len(evaliter), '-', j+1, n_minibatch)
 
 					st = j * minibatch_size
 					ed = min((j+1) * minibatch_size, src_ids.size(0))
 					src_ids_sub = src_ids[st:ed,:]
+
+					print('minibatch: ', st, ed, src_ids.size(0))
 
 					time1 = time.time()
 					if next(model.parameters()).is_cuda:
@@ -121,7 +121,7 @@ def translate(test_set, load_dir, test_path_out, use_gpu,
 						preds = model.forward_translate_fast(src=src_ids_sub,
 								beam_width=beam_width, use_gpu=use_gpu)
 					time2 = time.time()
-					print(time2-time1)
+					print('comp time: ', time2-time1)
 
 					# write to file
 					seqlist = preds[:,1:]
@@ -166,7 +166,7 @@ def main():
 
 	# load src-tgt pair
 	test_path_src = config['test_path_src']
-	test_path_tgt = config['test_path_tgt']
+	test_path_tgt = test_path_src
 	path_vocab_src = config['path_vocab_src']
 	path_vocab_tgt = config['path_vocab_tgt']
 	test_path_out = config['test_path_out']

@@ -1,9 +1,11 @@
 #!/bin/bash
 #$ -S /bin/bash
 
-unset LD_PRELOAD
 echo $HOSTNAME
+unset LD_PRELOAD
 export PATH=/home/mifs/ytl28/anaconda3/bin/:$PATH
+# export PATH=/home/mifs/ytl28/anaconda3/bin/:/usr/bin
+# echo $PATH
 
 export CUDA_VISIBLE_DEVICES=0
 # export CUDA_VISIBLE_DEVICES=$X_SGE_CUDA_DEVICE
@@ -11,133 +13,96 @@ echo $CUDA_VISIBLE_DEVICES
 
 # python 3.6
 # pytorch 1.3
-# source activate py13-cuda9
-# export PYTHONBIN=/home/mifs/ytl28/anaconda3/envs/py13-cuda9/bin/python3
-source activate pt11-cuda9
-export PYTHONBIN=/home/mifs/ytl28/anaconda3/envs/pt11-cuda9/bin/python3
-
+# source activate pt11-cuda9
+# export PYTHONBIN=/home/mifs/ytl28/anaconda3/envs/pt11-cuda9/bin/python3
+# source activate pt12-cuda10
+# export PYTHONBIN=/home/mifs/ytl28/anaconda3/envs/pt12-cuda10/bin/python3
+source activate py13-cuda9
+export PYTHONBIN=/home/mifs/ytl28/anaconda3/envs/py13-cuda9/bin/python3
 # ------------------------ DIR --------------------------
-# [mustc corpus]
-# option 1 - fairseq bpe
-# savedir=models/en-de-v008/
-# train_path_src=../lib/mustc-en-de-proc-fairseq/mustc/train/train.BPE.en
-# train_path_tgt=../lib/mustc-en-de-proc-fairseq/mustc/train/train.BPE.de
-# # dev_path_src=../lib/mustc-en-de-proc-fairseq/mustc/dev/dev.BPE.en
-# # dev_path_tgt=../lib/mustc-en-de-proc-fairseq/mustc/dev/dev.BPE.de
-# dev_path_src=None
-# dev_path_tgt=None
-# path_vocab_src=../lib/wmt17_en_de/wmt17_en_de/vocab.en
-# path_vocab_tgt=../lib/wmt17_en_de/wmt17_en_de/vocab.de
-# load_embedding_src=None
-# load_embedding_tgt=None
-# use_type='word'
-
-# option 2 - fairseq bpe on src; char on tgt
-# savedir=models/en-de-v009/
-# train_path_src=../lib/mustc-en-de-proc-fairseq/mustc/train/train.BPE.en
-# train_path_tgt=../lib/mustc-en-de/train/txt/train.de
-# # dev_path_src=../lib/mustc-en-de-proc-fairseq/mustc/dev/dev.BPE.en
-# # dev_path_tgt=../lib/mustc-en-de/dev/txt/dev.de
-# dev_path_src=None
-# dev_path_tgt=None
-# path_vocab_src=../lib/mustc-en-de-proc-fairseq/vocab.en
-# path_vocab_tgt=../lib/mustc-en-de-proc-fairseq/vocab.de.char
-# load_embedding_src=None
-# load_embedding_tgt=None
-# use_type='char'
-
-# option 3 - fairseq bpe on src; tokenised + char on tgt
-savedir=models/en-de-v011/
-train_path_src=../lib/mustc-en-de-proc-fairseq/mustc/train/train.BPE.en
-train_path_tgt=../lib/mustc-en-de-proc-fairseq/mustc-prep/train/train.de
-# dev_path_src=../lib/mustc-en-de-proc-fairseq/mustc/dev/dev.BPE.en
-# dev_path_tgt=../lib/mustc-en-de/dev/txt/dev.de
+# [new clc]
+savedir=models/gec-debug/
+train_path_src=/home/alta/BLTSpeaking/exp-ytl28/projects/lib/clc/train.src.nodot
+train_path_tgt=/home/alta/BLTSpeaking/exp-ytl28/projects/lib/clc/train.tgt.nodot
+# dev_path_src=/home/alta/BLTSpeaking/exp-ytl28/projects/lib/clc/dev.src
+# dev_path_tgt=/home/alta/BLTSpeaking/exp-ytl28/projects/lib/clc/dev.tgt
 dev_path_src=None
 dev_path_tgt=None
-path_vocab_src=../lib/mustc-en-de-proc-fairseq/vocab.en
-path_vocab_tgt=../lib/mustc-en-de-proc-fairseq/vocab.de.char
-load_embedding_src=None
-load_embedding_tgt=None
-use_type='char'
-
-
-# [wmt2017 corpus]
-# savedir=models/en-de-v021/
-# train_path_src=../lib/wmt17_en_de/wmt17_en_de/train.en
-# train_path_tgt=../lib/wmt17_en_de/wmt17_en_de/train.de
-# # dev_path_src=../lib/wmt17_en_de/wmt17_en_de/valid.en
-# # dev_path_tgt=../lib/wmt17_en_de/wmt17_en_de/valid.de
-# dev_path_src=None
-# dev_path_tgt=None
-# path_vocab_src=../lib/wmt17_en_de/wmt17_en_de/vocab.en
-# path_vocab_tgt=../lib/wmt17_en_de/wmt17_en_de/vocab.de
-# load_embedding_src=None
-# load_embedding_tgt=None
-# use_type='word'
+path_vocab_src=/home/alta/BLTSpeaking/exp-ytl28/encdec/lib/vocab/clctotal+swbd.min-count4.en
+path_vocab_tgt=/home/alta/BLTSpeaking/exp-ytl28/encdec/lib/vocab/clctotal+swbd.min-count4.en
+use_type='word'
+share_embedder=True
 
 # ------------------------ MODEL --------------------------
-embedding_size_enc=300
-embedding_size_dec=300
-hidden_size_enc=300
-hidden_size_dec=300
-hidden_size_shared=300
-num_bilstm_enc=3
-num_unilstm_dec=4
-att_mode=bilinear # bahdanau | bilinear
+embedding_size_enc=512
+embedding_size_dec=512
+# load_embedding_src=/home/alta/BLTSpeaking/exp-ytl28/encdec/lib/embeddings/glove.6B.200d.txt
+# load_embedding_tgt=/home/alta/BLTSpeaking/exp-ytl28/encdec/lib/embeddings/glove.6B.200d.txt
+load_embedding_src='None'
+load_embedding_tgt='None'
+
+num_heads=8
+dim_model=512
+dim_feedforward=2048
+enc_layers=6
+dec_layers=6
+transformer_type='standard' # standard | universal
 
 # ------------------------ TRAIN --------------------------
 # checkpoint_every=5
 # print_every=2
-checkpoint_every=1000
-print_every=200
+checkpoint_every=5000
+print_every=1000
 
-batch_size=512
-minibatch_split=4
-max_seq_len=250
-num_epochs=50
+batch_size=256
+minibatch_split=2
+max_seq_len=32
+num_epochs=20
 
-random_seed=300
+learning_rate_init=0.0001
+learning_rate=0.0001
+lr_warmup_steps=0 # total~?k
+
+random_seed=2020
 eval_with_mask=True
+normalise_loss=True
 max_count_no_improve=5
 max_count_num_rollback=2
 keep_num=2
-normalise_loss=True
 
-$PYTHONBIN /home/alta/BLTSpeaking/exp-ytl28/local-ytl/nmt-base/train.py \
+
+$PYTHONBIN /home/alta/BLTSpeaking/exp-ytl28/local-ytl/nmt-transformer/train.py \
 	--train_path_src $train_path_src \
 	--train_path_tgt $train_path_tgt \
 	--dev_path_src $dev_path_src \
 	--dev_path_tgt $dev_path_tgt \
 	--path_vocab_src $path_vocab_src \
 	--path_vocab_tgt $path_vocab_tgt \
-	--load_embedding_src $load_embedding_src \
-	--load_embedding_tgt $load_embedding_tgt \
 	--use_type $use_type \
 	--save $savedir \
 	--random_seed $random_seed \
+	--share_embedder $share_embedder \
 	--embedding_size_enc $embedding_size_enc \
 	--embedding_size_dec $embedding_size_dec \
-	--hidden_size_enc $hidden_size_enc \
-	--num_bilstm_enc $num_bilstm_enc \
-	--num_unilstm_enc 0 \
-	--hidden_size_dec $hidden_size_dec \
-	--num_unilstm_dec $num_unilstm_dec \
-	--hidden_size_att 10 \
-	--att_mode $att_mode \
-	--residual True \
-	--hidden_size_shared $hidden_size_shared \
+	--load_embedding_src $load_embedding_src \
+	--load_embedding_tgt $load_embedding_tgt \
+	--num_heads $num_heads \
+	--dim_model $dim_model \
+	--dim_feedforward $dim_feedforward \
+	--enc_layers $enc_layers \
+	--dec_layers $dec_layers \
+	--transformer_type $transformer_type \
 	--max_seq_len $max_seq_len \
 	--batch_size $batch_size \
-	--batch_first True \
 	--seqrev False \
 	--eval_with_mask $eval_with_mask \
-	--scheduled_sampling False \
-	--teacher_forcing_ratio 1.0 \
 	--dropout 0.2 \
 	--embedding_dropout 0.0 \
 	--num_epochs $num_epochs \
 	--use_gpu True \
-	--learning_rate 0.001 \
+	--learning_rate $learning_rate \
+	--learning_rate_init $learning_rate_init \
+	--lr_warmup_steps $lr_warmup_steps \
 	--max_grad_norm 1.0 \
 	--checkpoint_every $checkpoint_every \
 	--print_every $print_every \
