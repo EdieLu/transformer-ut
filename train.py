@@ -128,7 +128,7 @@ def main():
 	path_vocab_src = config['path_vocab_src']
 	path_vocab_tgt = config['path_vocab_tgt']
 	train_set = Dataset(train_path_src, train_path_tgt,
-		path_vocab_src, path_vocab_tgt,
+		path_vocab_src=path_vocab_src, path_vocab_tgt=path_vocab_tgt,
 		seqrev=config['seqrev'],
 		max_seq_len=config['max_seq_len'],
 		batch_size=config['batch_size'],
@@ -144,7 +144,7 @@ def main():
 		dev_path_src = config['dev_path_src']
 		dev_path_tgt = config['dev_path_tgt']
 		dev_set = Dataset(dev_path_src, dev_path_tgt,
-			path_vocab_src, path_vocab_tgt,
+			path_vocab_src=path_vocab_src, path_vocab_tgt=path_vocab_tgt,
 			seqrev=config['seqrev'],
 			max_seq_len=config['max_seq_len'],
 			batch_size=config['batch_size'],

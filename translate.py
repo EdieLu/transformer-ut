@@ -27,8 +27,8 @@ def load_arguments(parser):
 
 	# paths
 	parser.add_argument('--test_path_src', type=str, required=True, help='test src dir')
-	parser.add_argument('--path_vocab_src', type=str, required=True, help='vocab src dir')
-	parser.add_argument('--path_vocab_tgt', type=str, required=True, help='vocab tgt dir')
+	parser.add_argument('--path_vocab_src', type=str, default='None', help='vocab src dir, not needed')
+	parser.add_argument('--path_vocab_tgt', type=str, default='None', help='vocab tgt dir, not needed')
 	parser.add_argument('--load', type=str, required=True, help='model load dir')
 	parser.add_argument('--test_path_out', type=str, required=True, help='test out dir')
 
@@ -44,7 +44,7 @@ def load_arguments(parser):
 	return parser
 
 
-def translate(test_set, load_dir, test_path_out, use_gpu,
+def translate(test_set, model, test_path_out, use_gpu,
 	max_seq_len, beam_width, device, seqrev=False):
 
 	"""
@@ -57,14 +57,6 @@ def translate(test_set, load_dir, test_path_out, use_gpu,
 			use_gpu: on gpu/cpu
 	"""
 	# import pdb; pdb.set_trace()
-
-	# load model
-	latest_checkpoint_path = load_dir
-	resume_checkpoint = Checkpoint.load(latest_checkpoint_path)
-
-	model = resume_checkpoint.model.to(device)
-	print('Model dir: {}'.format(latest_checkpoint_path))
-	print('Model laoded')
 
 	# reset batch_size:
 	model.max_seq_len = max_seq_len
@@ -167,8 +159,6 @@ def main():
 	# load src-tgt pair
 	test_path_src = config['test_path_src']
 	test_path_tgt = test_path_src
-	path_vocab_src = config['path_vocab_src']
-	path_vocab_tgt = config['path_vocab_tgt']
 	test_path_out = config['test_path_out']
 	load_dir = config['load']
 	max_seq_len = config['max_seq_len']
@@ -190,20 +180,30 @@ def main():
 	device = check_device(use_gpu)
 	print('device: {}'.format(device))
 
+	# load model
+	latest_checkpoint_path = load_dir
+	resume_checkpoint = Checkpoint.load(latest_checkpoint_path)
+	model = resume_checkpoint.model.to(device)
+	vocab_src = resume_checkpoint.input_vocab
+	vocab_tgt = resume_checkpoint.output_vocab
+	print('Model dir: {}'.format(latest_checkpoint_path))
+	print('Model laoded')
+
 	# load test_set
 	test_set = Dataset(test_path_src, test_path_tgt,
-						path_vocab_src, path_vocab_tgt,
+						vocab_src_list=vocab_src, vocab_tgt_list=vocab_tgt,
 						seqrev=seqrev,
 						max_seq_len=max_seq_len,
 						batch_size=batch_size,
 						use_gpu=use_gpu,
 						use_type=use_type)
+	print('Test dir: {}'.format(test_path_src))
 	print('Testset loaded')
 	sys.stdout.flush()
 
 	# run eval
 	if MODE == 1:
-		translate(test_set, load_dir, test_path_out, use_gpu,
+		translate(test_set, model, test_path_out, use_gpu,
 			max_seq_len, beam_width, device, seqrev=seqrev)
 
 

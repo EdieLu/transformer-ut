@@ -102,9 +102,8 @@ class Trainer(object):
 		if step <= warmup_steps:
 			lr = step * 1. * (peak_lr - init_lr) / warmup_steps + init_lr
 		else:
-			lr = peak_lr * ((step - warmup_steps) ** (-0.5))
-
-		# print(step, lr)
+			# lr = peak_lr * ((step - warmup_steps) ** (-0.5))
+			lr = peak_lr * (step ** (-0.5)) * (warmup_steps ** 0.5)
 
 		for param_group in optimizer.param_groups:
 			param_group['lr'] = lr
@@ -165,24 +164,24 @@ class Trainer(object):
 					non_padding_mask_tgt = tgt_ids.data.ne(PAD)
 					non_padding_mask_src = src_ids.data.ne(PAD)
 
-					# run model
-					preds, logps, dec_outputs = model.forward_eval(
-						src_ids, use_gpu=self.use_gpu)
+					# run model - use tf to save time
+					preds, logps, dec_outputs = model.forward_train(
+						src_ids, tgt_ids, use_gpu=self.use_gpu)
 
 					# evaluation
 					if not self.eval_with_mask:
-						loss.eval_batch(logps[:,1:,:].reshape(-1, logps.size(-1)),
+						loss.eval_batch(logps[:,:-1,:].reshape(-1, logps.size(-1)),
 							tgt_ids[:, 1:].reshape(-1))
 						loss.norm_term = 1.0 * tgt_ids.size(0) * tgt_ids[:,1:].size(1)
 					else:
-						loss.eval_batch_with_mask(logps[:,1:,:].reshape(-1, logps.size(-1)),
-							tgt_ids[:, 1:].reshape(-1), non_padding_mask_tgt[:,1:].reshape(-1))
+						loss.eval_batch_with_mask(logps[:,:-1,:].reshape(-1, logps.size(-1)),
+							tgt_ids[:,1:].reshape(-1), non_padding_mask_tgt[:,1:].reshape(-1))
 						loss.norm_term = 1.0 * torch.sum(non_padding_mask_tgt[:,1:])
 					if self.normalise_loss: loss.normalise()
 					resloss += loss.get_loss()
 					resloss_norm += 1
 
-					seqres = preds[:,1:]
+					seqres = preds[:,:-1]
 					correct = seqres.reshape(-1).eq(tgt_ids[:,1:].reshape(-1))\
 						.masked_select(non_padding_mask_tgt[:,1:].reshape(-1)).sum().item()
 					match += correct

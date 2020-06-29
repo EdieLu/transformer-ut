@@ -81,9 +81,10 @@ class Decoder(nn.Module):
 		q_len = x.size(1)
 
 		if not self.act:
+			# fix (was inside for loop)
+			x = x + self.time_signal[:, :tgt.shape[1], :].type_as(
+				tgt.data).clone().detach()
 			for layer in range(self.num_layers):
-				x = x + self.time_signal[:, :tgt.shape[1], :].type_as(
-					tgt.data).clone().detach()
 				if self.transformer_type == 'universal':
 					x = x + self.layer_signal[:, layer, :].unsqueeze(1).repeat(
 						1,tgt.shape[1],1).type_as(tgt.data).clone().detach()

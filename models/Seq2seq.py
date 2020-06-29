@@ -127,7 +127,7 @@ class Seq2seq(nn.Module):
 	def forward_train(self, src, tgt, debug_flag=False, use_gpu=True):
 
 		"""
-			train disfluency detection enc + dec
+			train enc + dec
 			note: all output useful up to the second last element i.e. b x (len-1)
 					e.g. [b,:-1] for preds -
 						src: 		w1 w2 w3 <EOS> <PAD> <PAD> <PAD>
@@ -170,7 +170,7 @@ class Seq2seq(nn.Module):
 	def forward_eval(self, src, debug_flag=False, use_gpu=True):
 
 		"""
-			eval disfluency detection enc + dec (beam_width = 1)
+			eval enc + dec (beam_width = 1)
 			all outputs following:
 				tgt:	<BOS> w1 w2 w3 <EOS> <PAD>
 				gen:		  w1 w2 w3 <EOS> <PAD> <PAD>
@@ -319,7 +319,7 @@ class Seq2seq(nn.Module):
 	def forward_translate(self, src, beam_width=1, penalty_factor=1, use_gpu=True):
 
 		"""
-			run disfluency detection enc + dec inference - with beam search
+			run enc + dec inference - with beam search
 		"""
 
 		# import pdb; pdb.set_trace()
@@ -404,12 +404,13 @@ class Seq2seq(nn.Module):
 				# (b x beam_width) x beam_width
 				score_temp = scores_expand.reshape(-1,1) + score.masked_fill(
 					eos_mask.reshape(-1,1), 0).masked_fill(eos_mask_expand, -1e9)
-				# length penalty
+				# length penalty - tok-level score
 				score_temp = score_temp / (len_map.reshape(-1,1) ** penalty_factor)
 				# select top k from k^2
 				# (b x beam_width^2 -> b x beam_width)
 				score_select, pos = score_temp.reshape(batch, -1).topk(beam_width)
-				scores_expand = score_select.view(-1)
+				# fix: recover sequence level score
+				scores_expand = score_select.view(-1) * (len_map.reshape(-1,1) ** penalty_factor).view(-1)
 				# select correct elements according to pos
 				pos = (pos.float() + torch.range(0, (batch - 1) * (beam_width**2), (beam_width**2)).to(
 					device=device).reshape(batch, 1)).long()
@@ -540,7 +541,7 @@ class Seq2seq(nn.Module):
 				# select top k from k^2
 				# (b x beam_width^2 -> b x beam_width)
 				score_select, pos = score_temp.reshape(batch, -1).topk(beam_width)
-				scores_expand = score_select.view(-1)
+				scores_expand = score_select.view(-1) * (len_map.reshape(-1,1) ** penalty_factor).view(-1)
 				# select correct elements according to pos
 				pos = (pos + torch.range(0, (batch - 1) * (beam_width**2), (beam_width**2)).to(
 					device=device).reshape(batch, 1)).long()
