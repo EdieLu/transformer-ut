@@ -7,8 +7,9 @@ import logging
 import argparse
 import sys
 import numpy as np
+import torchtext
 
-from utils.misc import get_memory_alloc, check_device
+from utils.misc import get_memory_alloc, check_device, add2corpus
 from utils.misc import _convert_to_words_batchfirst, _convert_to_words
 from utils.config import PAD, EOS
 from modules.loss import NLLLoss, BCELoss, CrossEntropyLoss
@@ -113,7 +114,6 @@ class Trainer(object):
 
 	def _evaluate_batches(self, model, dataset):
 
-		# todo: return BLEU score (use BLEU to determine roll back etc)
 		# import pdb; pdb.set_trace()
 
 		model.eval()
@@ -121,8 +121,13 @@ class Trainer(object):
 		resloss = 0
 		resloss_norm = 0
 
+		# accuracy
 		match = 0
 		total = 0
+
+		# bleu
+		hyp_corpus = []
+		ref_corpus = []
 
 		evaliter = iter(dataset.iter_loader)
 		out_count = 0
@@ -164,43 +169,64 @@ class Trainer(object):
 					non_padding_mask_tgt = tgt_ids.data.ne(PAD)
 					non_padding_mask_src = src_ids.data.ne(PAD)
 
-					# run model - use tf to save time
-					preds, logps, dec_outputs = model.forward_train(
-						src_ids, tgt_ids, use_gpu=self.use_gpu)
+					# [run-TF] to save time
+					# preds, logps, dec_outputs = model.forward_train(
+					# 	src_ids, tgt_ids, use_gpu=self.use_gpu)
+					# logps_hyp = logps[:,:-1,:]
+					# preds_hyp = preds[:,:-1]
+
+					# [run-FR] to get true stats
+					preds, logps, dec_outputs= model.forward_eval(
+						src_ids, use_gpu=self.use_gpu)
+					logps_hyp = logps[:,1:,:]
+					preds_hyp = preds[:,1:]
 
 					# evaluation
 					if not self.eval_with_mask:
-						loss.eval_batch(logps[:,:-1,:].reshape(-1, logps.size(-1)),
+						loss.eval_batch(logps_hyp.reshape(-1, logps_hyp.size(-1)),
 							tgt_ids[:, 1:].reshape(-1))
 						loss.norm_term = 1.0 * tgt_ids.size(0) * tgt_ids[:,1:].size(1)
 					else:
-						loss.eval_batch_with_mask(logps[:,:-1,:].reshape(-1, logps.size(-1)),
+						loss.eval_batch_with_mask(logps_hyp.reshape(-1, logps_hyp.size(-1)),
 							tgt_ids[:,1:].reshape(-1), non_padding_mask_tgt[:,1:].reshape(-1))
 						loss.norm_term = 1.0 * torch.sum(non_padding_mask_tgt[:,1:])
 					if self.normalise_loss: loss.normalise()
 					resloss += loss.get_loss()
 					resloss_norm += 1
 
-					seqres = preds[:,:-1]
+					# accuracy
+					seqres = preds_hyp
 					correct = seqres.reshape(-1).eq(tgt_ids[:,1:].reshape(-1))\
 						.masked_select(non_padding_mask_tgt[:,1:].reshape(-1)).sum().item()
 					match += correct
 					total += non_padding_mask_tgt[:,1:].sum().item()
 
+					# print
 					out_count = self._print_hyp(out_count, src_ids, tgt_ids,
 						dataset.src_id2word, dataset.tgt_id2word, seqres)
 
+					# accumulate corpus
+					hyp_corpus, ref_corpus = add2corpus(seqres, tgt_ids,
+						dataset.tgt_id2word, hyp_corpus, ref_corpus, type=dataset.use_type)
+
+		# import pdb; pdb.set_trace()
+		bleu = torchtext.data.metrics.bleu_score(hyp_corpus, ref_corpus)
+
+		torch.cuda.empty_cache()
 		if total == 0:
 			accuracy = float('nan')
 		else:
 			accuracy = match / total
 
 		resloss /= (1.0 * resloss_norm)
-		torch.cuda.empty_cache()
+
 		losses = {}
 		losses['nll_loss'] = resloss
+		metrics = {}
+		metrics['accuracy'] = accuracy
+		metrics['bleu'] = bleu
 
-		return resloss, accuracy, losses
+		return losses, metrics
 
 
 	def _train_batch(self,
@@ -293,6 +319,7 @@ class Trainer(object):
 		step = start_step
 		step_elapsed = 0
 		prev_acc = 0.0
+		prev_bleu = 0.0
 		count_no_improve = 0
 		count_num_rollback = 0
 		ckpt = None
@@ -360,16 +387,21 @@ class Trainer(object):
 
 					# save criteria
 					if dev_set is not None:
-						dev_loss, accuracy, _= self._evaluate_batches(model, dev_set)
+						losses, metrics = self._evaluate_batches(model, dev_set)
 
-						log_msg = 'Progress: %d%%, Dev loss: %.4f, accuracy: %.4f' % (
-							step / total_steps * 100, dev_loss, accuracy)
+						loss = losses['nll_loss']
+						accuracy = metrics['accuracy']
+						bleu = metrics['bleu']
+						log_msg = 'Progress: %d%%, Dev loss: %.4f, accuracy: %.4f, bleu: %.4f' % (
+							step / total_steps * 100, loss, accuracy, bleu)
 						log.info(log_msg)
-						self.writer.add_scalar('dev_loss', dev_loss, global_step=step)
+						self.writer.add_scalar('dev_loss', loss, global_step=step)
 						self.writer.add_scalar('dev_acc', accuracy, global_step=step)
+						self.writer.add_scalar('dev_bleu', bleu, global_step=step)
 
 						# save
-						if prev_acc < accuracy:
+						# if prev_acc < accuracy:
+						if ((prev_acc < accuracy) and (bleu < 0.1)) or prev_bleu < bleu:
 							# save best model
 							ckpt = Checkpoint(model=model,
 									   optimizer=self.optimizer,
@@ -381,6 +413,7 @@ class Trainer(object):
 							log.info('saving at {} ... '.format(saved_path))
 							# reset
 							prev_acc = accuracy
+							prev_bleu = bleu
 							count_no_improve = 0
 							count_num_rollback = 0
 						else:
@@ -388,6 +421,9 @@ class Trainer(object):
 
 						# roll back
 						if count_no_improve > self.max_count_no_improve:
+							# no roll back - break after self.max_count_no_improve epochs
+							if self.max_count_num_rollback == 0:
+								break
 							# resuming
 							latest_checkpoint_path = Checkpoint.get_latest_checkpoint(self.expt_dir)
 							if type(latest_checkpoint_path) != type(None):

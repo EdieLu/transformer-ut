@@ -9,15 +9,12 @@ import numpy as np
 
 from utils.dataset import Dataset
 from utils.misc import save_config, validate_config
-from utils.misc import get_memory_alloc, plot_alignment, check_device
+from utils.misc import get_memory_alloc, plot_alignment, check_device, combine_weights
 from utils.misc import _convert_to_words_batchfirst, _convert_to_words, _convert_to_tensor
 from utils.config import PAD, EOS
-from modules.loss import NLLLoss
-from modules.optim import Optimizer
 from modules.checkpoint import Checkpoint
 from models.Seq2seq import Seq2seq
 
-import logging
 logging.basicConfig(level=logging.INFO)
 
 
@@ -30,6 +27,7 @@ def load_arguments(parser):
 	parser.add_argument('--path_vocab_src', type=str, default='None', help='vocab src dir, not needed')
 	parser.add_argument('--path_vocab_tgt', type=str, default='None', help='vocab tgt dir, not needed')
 	parser.add_argument('--load', type=str, required=True, help='model load dir')
+	parser.add_argument('--combine_path', type=str, default='None', help='combine multiple ckpts if given dir')
 	parser.add_argument('--test_path_out', type=str, required=True, help='test out dir')
 
 	# others
@@ -58,7 +56,7 @@ def translate(test_set, model, test_path_out, use_gpu,
 	"""
 	# import pdb; pdb.set_trace()
 
-	# reset batch_size:
+	# reset max_len
 	model.max_seq_len = max_seq_len
 	model.enc.expand_time(max_seq_len)
 	model.dec.expand_time(max_seq_len)
@@ -188,6 +186,10 @@ def main():
 	vocab_tgt = resume_checkpoint.output_vocab
 	print('Model dir: {}'.format(latest_checkpoint_path))
 	print('Model laoded')
+
+	# combine model
+	if type(config['combine_path']) != type(None):
+		model = combine_weights(config['combine_path'])
 
 	# load test_set
 	test_set = Dataset(test_path_src, test_path_tgt,

@@ -328,7 +328,6 @@ class Seq2seq(nn.Module):
 		global device
 		device = check_device(use_gpu)
 
-		# run dd
 		src_mask = _get_pad_mask(src).to(device=device) # b x 1 x len
 		if self.enc_emb_proj_flag:
 			emb_src = self.enc_emb_proj(self.enc_embedder(src))

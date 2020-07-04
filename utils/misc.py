@@ -10,6 +10,88 @@ import io
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from modules.checkpoint import Checkpoint
+
+
+def add2corpus(hyp, ref, dict, hyp_corpus, ref_corpus, type='char'):
+
+	""" map list of hyp/ref id to word lis; add to corpus """
+
+	hyp_toks = _convert_to_words_batchfirst(hyp, dict)
+	ref_toks = _convert_to_words_batchfirst(ref[:,1:], dict)
+
+	for i in range(len(hyp_toks)):
+		# loop over each line
+		# hyp
+		words = []
+		for word in hyp_toks[i]:
+			if word == '<pad>':
+				continue
+			elif word == '<spc>':
+				words.append(' ')
+			elif word == '</s>':
+				break
+			else:
+				words.append(word)
+		if len(words) == 0:
+			outline = ''
+		else:
+			if type == 'word':
+				outline = ' '.join(words)
+			elif type == 'char':
+				outline = ''.join(words)
+		hypline = outline
+
+		# ref
+		words = []
+		for word in ref_toks[i]:
+			if word == '<pad>':
+				continue
+			elif word == '<spc>':
+				words.append(' ')
+			elif word == '</s>':
+				break
+			else:
+				words.append(word)
+		if len(words) == 0:
+			outline = ''
+		else:
+			if type == 'word':
+				outline = ' '.join(words)
+			elif type == 'char':
+				outline = ''.join(words)
+		refline = outline
+
+		# accumulate lines
+		# import pdb; pdb.set_trace()
+		hyp = hypline.split()
+		ref = refline.split()
+		hyp_corpus.append(hyp)
+		ref_corpus.append([ref])
+
+	return hyp_corpus, ref_corpus
+
+
+def combine_weights(path):
+
+	"""
+	 	reference - qd212
+		average ckpt weights under the given path
+	"""
+
+	ckpt_path_list = [os.path.join(path, ep) for ep in os.listdir(path)]
+	ckpt_state_dict_list = [Checkpoint.load(ckpt_path).model.state_dict()
+		for ckpt_path in ckpt_path_list]
+
+	model = Checkpoint.load(ckpt_path_list[0]).model
+	mean_state_dict = model.state_dict()
+	for key in mean_state_dict.keys():
+		mean_state_dict[key] = 1. * (sum(d[key] for d in ckpt_state_dict_list)
+			/ len(ckpt_state_dict_list))
+
+	model.load_state_dict(mean_state_dict)
+
+	return model
 
 
 def check_device(use_gpu):

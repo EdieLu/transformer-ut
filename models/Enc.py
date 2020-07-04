@@ -78,11 +78,15 @@ class Encoder(nn.Module):
 
 		x = src[:]
 		if not self.act:
-			# fix (was inside for loop)
-			x = x + self.time_signal[:, :src.shape[1], :].type_as(
-				src.data).clone().detach()
+			if self.transformer_type == 'standard':
+				# standard: add pos embedding once
+				x = x + self.time_signal[:, :src.shape[1], :].type_as(
+					src.data).clone().detach()
 			for layer in range(self.num_layers):
 				if self.transformer_type == 'universal':
+					# ut: add pos/layer embedding in each layer
+					x = x + self.time_signal[:, :src.shape[1], :].type_as(
+						src.data).clone().detach()
 					x = x + self.layer_signal[:, layer, :].unsqueeze(1).repeat(
 						1,src.shape[1],1).type_as(src.data).clone().detach()
 				x, att = self.enc_layers[layer](x, slf_attn_mask=src_mask)
