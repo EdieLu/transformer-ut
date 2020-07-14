@@ -137,15 +137,16 @@ class Seq2seq(nn.Module):
 		"""
 
 		# import pdb; pdb.set_trace()
+		# note: adding .type(torch.uint8) to be compatible with pytorch 1.1!
 
 		# check gpu
 		global device
 		device = check_device(use_gpu)
 
 		# run transformer
-		src_mask = _get_pad_mask(src).to(device=device) 	# b x len
-		tgt_mask = ((_get_pad_mask(tgt).to(device=device)
-			& _get_subsequent_mask(self.max_seq_len).to(device=device)))
+		src_mask = _get_pad_mask(src).to(device=device).type(torch.uint8) 	# b x len
+		tgt_mask = ((_get_pad_mask(tgt).to(device=device).type(torch.uint8)
+			& _get_subsequent_mask(self.max_seq_len).type(torch.uint8).to(device=device)))
 
 		# b x len x dim_model
 		if self.enc_emb_proj_flag:
@@ -190,7 +191,8 @@ class Seq2seq(nn.Module):
 		length_out = self.max_seq_len
 
 		# run enc dec
-		src_mask = _get_pad_mask(src).to(device=device)
+		eos_mask = torch.BoolTensor([False]).repeat(batch).to(device=device)
+		src_mask = _get_pad_mask(src).type(torch.uint8).to(device=device)
 		if self.enc_emb_proj_flag:
 			emb_src = self.enc_emb_proj(self.embedding_dropout(self.enc_embedder(src)))
 		else:
@@ -215,8 +217,8 @@ class Seq2seq(nn.Module):
 			# gen: 0-30; ref: 1-31
 			# import pdb; pdb.set_trace()
 
-			tgt_mask = ((_get_pad_mask(preds).to(device=device)
-				& _get_subsequent_mask(preds.size(-1)).to(device=device)))
+			tgt_mask = ((_get_pad_mask(preds).type(torch.uint8).to(device=device)
+				& _get_subsequent_mask(preds.size(-1)).type(torch.uint8).to(device=device)))
 			if self.dec_emb_proj_flag:
 				emb_tgt = self.dec_emb_proj(self.dec_embedder(preds))
 			else:
@@ -226,6 +228,9 @@ class Seq2seq(nn.Module):
 			logit = self.out(dec_output)
 			logp = torch.log_softmax(logit, dim=2)
 			pred = logp.data.topk(1)[1] # b x :i
+			# eos_mask = (pred[:, i-1].squeeze(1) == EOS) + eos_mask # >=pt1.3
+			eos_mask = ((pred[:, i-1].squeeze(1) == EOS).type(torch.uint8)
+				+ eos_mask.type(torch.uint8)).type(torch.bool).type(torch.uint8) # >=pt1.1
 
 			# b x len x dim_model - [:,0,:] is dummy 0's
 			dec_outputs[:, i, :] = dec_output[:, i-1]
@@ -236,6 +241,13 @@ class Seq2seq(nn.Module):
 
 			# append current pred, length+1
 			preds = torch.cat((preds,pred[:, i-1]),dim=1)
+
+			if sum(eos_mask.int()) == eos_mask.size(0):
+				# import pdb; pdb.set_trace()
+				dummy = torch.Tensor([PAD]).repeat(batch, length_out-preds.size(1)).type(
+					torch.LongTensor).to(device=device)
+				preds = torch.cat((preds,dummy),dim=1) # pad to max length
+				break
 
 		if not debug_flag:
 			return preds, logps, dec_outputs
@@ -259,7 +271,7 @@ class Seq2seq(nn.Module):
 		length_out = self.max_seq_len
 
 		# run enc dec
-		src_mask = _get_pad_mask(src).to(device=device)
+		src_mask = _get_pad_mask(src).type(torch.uint8).to(device=device)
 		if self.enc_emb_proj_flag:
 			emb_src = self.enc_emb_proj(self.embedding_dropout(self.enc_embedder(src)))
 		else:
@@ -284,8 +296,8 @@ class Seq2seq(nn.Module):
 			# gen: 0-30; ref: 1-31
 			# import pdb; pdb.set_trace()
 
-			tgt_mask = ((_get_pad_mask(preds).to(device=device)
-				& _get_subsequent_mask(preds.size(-1)).to(device=device)))
+			tgt_mask = ((_get_pad_mask(preds).type(torch.uint8).to(device=device)
+				& _get_subsequent_mask(preds.size(-1)).type(torch.uint8).to(device=device)))
 			if self.dec_emb_proj_flag:
 				emb_tgt = self.dec_emb_proj(self.dec_embedder(preds))
 			else:
@@ -328,7 +340,7 @@ class Seq2seq(nn.Module):
 		global device
 		device = check_device(use_gpu)
 
-		src_mask = _get_pad_mask(src).to(device=device) # b x 1 x len
+		src_mask = _get_pad_mask(src).type(torch.uint8).to(device=device) # b x 1 x len
 		if self.enc_emb_proj_flag:
 			emb_src = self.enc_emb_proj(self.enc_embedder(src))
 		else:
@@ -364,8 +376,8 @@ class Seq2seq(nn.Module):
 			# import pdb; pdb.set_trace()
 
 			# Get k candidates for each beam, k^2 candidates in total (k=beam_width)
-			tgt_mask_expand = ((_get_pad_mask(preds_expand).to(device=device)
-				& _get_subsequent_mask(preds_expand.size(-1)).to(device=device)))
+			tgt_mask_expand = ((_get_pad_mask(preds_expand).type(torch.uint8).to(device=device)
+				& _get_subsequent_mask(preds_expand.size(-1)).type(torch.uint8).to(device=device)))
 			if self.dec_emb_proj_flag:
 				emb_tgt_expand = self.dec_emb_proj(self.dec_embedder(preds_expand))
 			else:
@@ -421,9 +433,11 @@ class Seq2seq(nn.Module):
 				preds_expand = torch.cat((preds_expand, pred_select.unsqueeze(-1)),dim=1)
 
 			# locate the eos in the generated sequences
-			eos_mask = (pred_select == EOS) + eos_mask
+			# eos_mask = (pred_select == EOS) + eos_mask # >=pt1.3
+			eos_mask = ((pred_select == EOS).type(torch.uint8)
+				+ eos_mask.type(torch.uint8)).type(torch.bool).type(torch.uint8) # >=pt1.1
 			len_map = len_map + torch.Tensor([1]).repeat(batch * beam_width).to(
-				device=device).masked_fill(eos_mask, 0)
+				device=device).masked_fill(eos_mask.type(torch.uint8), 0)
 
 			# early stop
 			if sum(eos_mask.int()) == eos_mask.size(0):
@@ -454,7 +468,7 @@ class Seq2seq(nn.Module):
 		device = check_device(use_gpu)
 
 		# run dd
-		src_mask = _get_pad_mask(src).to(device=device) # b x 1 x len
+		src_mask = _get_pad_mask(src).type(torch.uint8).to(device=device) # b x 1 x len
 		if self.enc_emb_proj_flag:
 			emb_src = self.enc_emb_proj(self.enc_embedder(src))
 		else:
@@ -490,8 +504,8 @@ class Seq2seq(nn.Module):
 			# import pdb; pdb.set_trace()
 
 			# Get k candidates for each beam, k^2 candidates in total (k=beam_width)
-			tgt_mask_expand = ((_get_pad_mask(preds_expand).to(device=device)
-				& _get_subsequent_mask(preds_expand.size(-1)).to(device=device)))
+			tgt_mask_expand = ((_get_pad_mask(preds_expand).type(torch.uint8).to(device=device)
+				& _get_subsequent_mask(preds_expand.size(-1)).type(torch.uint8).to(device=device)))
 			if self.dec_emb_proj_flag:
 				emb_tgt_expand = self.dec_emb_proj(self.dec_embedder(preds_expand))
 			else:
@@ -552,7 +566,9 @@ class Seq2seq(nn.Module):
 				preds_expand = torch.cat((preds_expand, pred_select.unsqueeze(-1)),dim=1)
 
 			# locate the eos in the generated sequences
-			eos_mask = (pred_select == EOS) + eos_mask
+			# eos_mask = (pred_select == EOS) + eos_mask # >=pt1.3
+			eos_mask = ((pred_select == EOS).type(torch.uint8)
+				+ eos_mask.type(torch.uint8)).type(torch.bool).type(torch.uint8) # >=pt1.1
 			len_map = len_map + torch.Tensor([1]).repeat(batch * beam_width).to(
 				device=device).masked_fill(eos_mask, 0)
 
@@ -570,7 +586,6 @@ class Seq2seq(nn.Module):
 		# scores = scores_expand.reshape(batch, -1)[:, -1].contiguous() # b
 
 		return preds
-
 
 
 	def check_var(self, var_name, var_val_set=None):

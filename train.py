@@ -52,7 +52,7 @@ def load_arguments(parser):
 	# train
 	parser.add_argument('--random_seed', type=int, default=666, help='random seed')
 	parser.add_argument('--use_gpu', type=str, default='False', help='whether or not using GPU')
-	parser.add_argument('--num_epochs', type=int, default=10, help='number of training epoches')
+	parser.add_argument('--num_epochs', type=int, default=10, help='number of training epochs')
 	parser.add_argument('--max_seq_len', type=int, default=32, help='maximum sequence length')
 	parser.add_argument('--batch_size', type=int, default=64, help='batch size')
 	parser.add_argument('--minibatch_split', type=int, default=1, help='split the batch to avoid OOM')
@@ -66,6 +66,10 @@ def load_arguments(parser):
 	# save and print
 	parser.add_argument('--checkpoint_every', type=int, default=10, help='save ckpt every n steps')
 	parser.add_argument('--print_every', type=int, default=10, help='print every n steps')
+	parser.add_argument('--eval_mode', type=str, default='tf',
+		help='fr | tf (free running or teacher forcing)')
+	parser.add_argument('--eval_metric', type=str, default='tokacc',
+		help='tokacc | bleu (token-level accuracy or word-level bleu)')
 	parser.add_argument('--max_count_no_improve', type=int, default=2,
 		help='if meet max, operate roll back')
 	parser.add_argument('--max_count_num_rollback', type=int, default=2,
@@ -110,6 +114,8 @@ def main():
 					batch_size=config['batch_size'],
 					checkpoint_every=config['checkpoint_every'],
 					print_every=config['print_every'],
+					eval_mode=config['eval_mode'],
+					eval_metric=config['eval_metric'],
 					learning_rate=config['learning_rate'],
 					learning_rate_init=config['learning_rate_init'],
 					lr_warmup_steps=config['lr_warmup_steps'],
@@ -120,7 +126,8 @@ def main():
 					max_count_num_rollback=config['max_count_num_rollback'],
 					keep_num=config['keep_num'],
 					normalise_loss=config['normalise_loss'],
-					minibatch_split=config['minibatch_split'])
+					minibatch_split=config['minibatch_split']
+					)
 
 	# load train set
 	train_path_src = config['train_path_src']

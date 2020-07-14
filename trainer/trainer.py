@@ -28,6 +28,8 @@ class Trainer(object):
 		load_dir=None,
 		checkpoint_every=100,
 		print_every=100,
+		eval_mode='fr',
+		eval_metric='tokacc',
 		batch_size=256,
 		use_gpu=False,
 		learning_rate=0.00001,
@@ -48,6 +50,8 @@ class Trainer(object):
 		self.optimizer = None
 		self.checkpoint_every = checkpoint_every
 		self.print_every = print_every
+		self.eval_mode = eval_mode
+		self.eval_metric = eval_metric
 
 		self.learning_rate = learning_rate
 		self.learning_rate_init = learning_rate_init
@@ -169,17 +173,19 @@ class Trainer(object):
 					non_padding_mask_tgt = tgt_ids.data.ne(PAD)
 					non_padding_mask_src = src_ids.data.ne(PAD)
 
-					# [run-TF] to save time
-					# preds, logps, dec_outputs = model.forward_train(
-					# 	src_ids, tgt_ids, use_gpu=self.use_gpu)
-					# logps_hyp = logps[:,:-1,:]
-					# preds_hyp = preds[:,:-1]
-
-					# [run-FR] to get true stats
-					preds, logps, dec_outputs= model.forward_eval(
-						src_ids, use_gpu=self.use_gpu)
-					logps_hyp = logps[:,1:,:]
-					preds_hyp = preds[:,1:]
+					# import pdb; pdb.set_trace()
+					if self.eval_mode == 'tf':
+						# [run-TF] to save time
+						preds, logps, dec_outputs = model.forward_train(
+							src_ids, tgt_ids, use_gpu=self.use_gpu)
+						logps_hyp = logps[:,:-1,:]
+						preds_hyp = preds[:,:-1]
+					elif self.eval_mode == 'fr':
+						# [run-FR] to get true stats
+						preds, logps, dec_outputs= model.forward_eval(
+							src_ids, use_gpu=self.use_gpu)
+						logps_hyp = logps[:,1:,:]
+						preds_hyp = preds[:,1:]
 
 					# evaluation
 					if not self.eval_with_mask:
@@ -310,7 +316,7 @@ class Trainer(object):
 		return resloss
 
 
-	def _train_epoches(self,
+	def _train_epochs(self,
 		train_set, model, n_epochs, start_epoch, start_step, dev_set=None):
 
 		log = self.logger
@@ -399,9 +405,16 @@ class Trainer(object):
 						self.writer.add_scalar('dev_acc', accuracy, global_step=step)
 						self.writer.add_scalar('dev_bleu', bleu, global_step=step)
 
+						# save condition
+						cond_acc = (prev_acc <= accuracy)
+						cond_bleu = (((prev_acc <= accuracy) and (bleu < 0.1)) or prev_bleu <= bleu)
+
 						# save
-						# if prev_acc < accuracy:
-						if ((prev_acc < accuracy) and (bleu < 0.1)) or prev_bleu < bleu:
+						if self.eval_metric == 'tokacc':
+							save_cond = cond_acc
+						elif self.eval_metric == 'bleu':
+							save_cond = cond_bleu
+						if save_cond:
 							# save best model
 							ckpt = Checkpoint(model=model,
 									   optimizer=self.optimizer,
@@ -571,6 +584,6 @@ class Trainer(object):
 		self.logger.info("Optimizer: %s, Scheduler: %s" %
 			(self.optimizer.optimizer, self.optimizer.scheduler))
 
-		self._train_epoches(train_set, model, num_epochs, start_epoch, step, dev_set=dev_set)
+		self._train_epochs(train_set, model, num_epochs, start_epoch, step, dev_set=dev_set)
 
 		return model

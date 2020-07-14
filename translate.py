@@ -41,6 +41,110 @@ def load_arguments(parser):
 
 	return parser
 
+def translate_logp(test_set, model, test_path_out, use_gpu,
+	max_seq_len, device, seqrev=False):
+
+	"""
+		run translation; record logp
+	"""
+	# import pdb; pdb.set_trace()
+
+	# reset max_len
+	model.max_seq_len = max_seq_len
+	model.enc.expand_time(max_seq_len)
+	model.dec.expand_time(max_seq_len)
+	print('max seq len {}'.format(model.max_seq_len))
+	sys.stdout.flush()
+
+	# load test
+	test_set.construct_batches(is_train=False)
+	evaliter = iter(test_set.iter_loader)
+	print('num batches: {}'.format(len(evaliter)))
+
+	with open(os.path.join(test_path_out, 'translate.txt'), 'w', encoding="utf8") as f:
+		model.eval()
+		with torch.no_grad():
+			for idx in range(len(evaliter)):
+
+				print(idx+1, len(evaliter))
+				batch_items = evaliter.next()
+
+				# load data
+				src_ids = batch_items['srcid'][0]
+				src_lengths = batch_items['srclen']
+				tgt_ids = batch_items['tgtid'][0]
+				tgt_lengths = batch_items['tgtlen']
+				src_len = max(src_lengths)
+				tgt_len = max(tgt_lengths)
+				src_ids = src_ids[:,:src_len].to(device=device)
+				tgt_ids = tgt_ids.to(device=device)
+
+				# import pdb; pdb.set_trace()
+				# split minibatch to avoid OOM
+				# if idx < 12: continue
+
+				n_minibatch = int(tgt_len / 100 + tgt_len % 100 > 0)
+				minibatch_size = int(src_ids.size(0) / n_minibatch)
+				n_minibatch = int(src_ids.size(0) / minibatch_size) + \
+					(src_ids.size(0) % minibatch_size > 0)
+
+				for j in range(n_minibatch):
+
+					st = j * minibatch_size
+					ed = min((j+1) * minibatch_size, src_ids.size(0))
+					src_ids_sub = src_ids[st:ed,:]
+
+					print('minibatch: ', st, ed, src_ids.size(0))
+
+					time1 = time.time()
+					preds, logps, *_ = model.forward_eval(src=src_ids_sub, use_gpu=use_gpu)
+					time2 = time.time()
+					print('comp time: ', time2-time1)
+
+					# import pdb; pdb.set_trace()
+
+					# write to file
+					seqlist = preds[:,1:]
+					logps_max = torch.max(logps[:,1:,:], dim=2)[0] # b x len
+					seqwords = _convert_to_words_batchfirst(seqlist, test_set.tgt_id2word)
+
+					for i in range(len(seqwords)):
+						if src_lengths[i] == 0:
+							continue
+						words = []
+						logp_sum = 0
+						for j in range(len(seqwords[i])):
+							word = seqwords[i][j]
+							logp = logps_max[i][j]
+							if word == '<pad>':
+								continue
+							elif word == '<spc>':
+								words.append(' ')
+								logp_sum += logp
+							elif word == '</s>':
+								# average over sequence length
+								logp_ave = 1. * logp_sum / len(words)
+								break
+							else:
+								words.append(word)
+								logp_sum += logp
+								
+						if 'logp_ave' not in locals():
+								logp_ave = 1. * logp_sum / len(words)
+
+						if len(words) == 0:
+							outline = ''
+						else:
+							if seqrev:
+								words = words[::-1]
+							if test_set.use_type == 'word':
+								outline = ' '.join(words)
+							elif test_set.use_type == 'char':
+								outline = ''.join(words)
+						f.write('{:0.5f}\t{}\n'.format(logp_ave, outline))
+
+					sys.stdout.flush()
+
 
 def translate(test_set, model, test_path_out, use_gpu,
 	max_seq_len, beam_width, device, seqrev=False):
@@ -109,9 +213,11 @@ def translate(test_set, model, test_path_out, use_gpu,
 								beam_width=beam_width, use_gpu=use_gpu)
 					else:
 						preds = model.forward_translate_fast(src=src_ids_sub,
-								beam_width=beam_width, use_gpu=use_gpu)
+									beam_width=beam_width, use_gpu=use_gpu)
 					time2 = time.time()
 					print('comp time: ', time2-time1)
+
+					# preds2, logps, *_ = model.forward_eval(src=src_ids_sub, use_gpu=use_gpu)
 
 					# write to file
 					seqlist = preds[:,1:]
@@ -207,6 +313,9 @@ def main():
 	if MODE == 1:
 		translate(test_set, model, test_path_out, use_gpu,
 			max_seq_len, beam_width, device, seqrev=seqrev)
+	elif MODE == 2: # output posterior
+		translate_logp(test_set, model, test_path_out, use_gpu,
+			max_seq_len, device, seqrev=seqrev)
 
 
 if __name__ == '__main__':

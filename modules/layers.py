@@ -281,7 +281,11 @@ def _get_subsequent_mask(max_length):
 
 	# import pdb; pdb.set_trace()
 
-	torch_mask = (1 - torch.triu(torch.ones((1, max_length, max_length)), diagonal=1)).bool()
+	# pt>=1.3
+	# torch_mask = (1 - torch.triu(torch.ones((1, max_length, max_length)), diagonal=1)).bool()
+
+	# pt>=1.1
+	torch_mask = (1 - torch.triu(torch.ones((1, max_length, max_length)), diagonal=1)).type(torch.bool)
 
 	return torch_mask
 
