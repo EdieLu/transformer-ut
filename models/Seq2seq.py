@@ -43,8 +43,7 @@ class Seq2seq(nn.Module):
 		enc_id2word=None,
 		dec_word2id=None,
 		dec_id2word=None,
-		transformer_type='standard',
-		use_gpu=False
+		transformer_type='standard'
 		):
 
 		super(Seq2seq, self).__init__()
@@ -244,9 +243,10 @@ class Seq2seq(nn.Module):
 
 			if sum(eos_mask.int()) == eos_mask.size(0):
 				# import pdb; pdb.set_trace()
-				dummy = torch.Tensor([PAD]).repeat(batch, length_out-preds.size(1)).type(
-					torch.LongTensor).to(device=device)
-				preds = torch.cat((preds,dummy),dim=1) # pad to max length
+				if length_out != preds.size(1):
+					dummy = torch.Tensor([PAD]).repeat(batch, length_out-preds.size(1)).type(
+						torch.LongTensor).to(device=device)
+					preds = torch.cat((preds,dummy),dim=1) # pad to max length
 				break
 
 		if not debug_flag:

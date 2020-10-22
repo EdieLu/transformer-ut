@@ -77,7 +77,8 @@ class Dataset(object):
 		use_gpu=True,
 		logger=None,
 		seqrev=False,
-		use_type='word'
+		use_type='word',
+		data_ratio=1.0
 		):
 
 		super(Dataset, self).__init__()
@@ -94,6 +95,7 @@ class Dataset(object):
 		self.logger = logger
 		self.seqrev = seqrev
 		self.use_type = use_type
+		self.data_ratio = data_ratio
 
 		if type(self.logger) == type(None):
 			self.logger = logging.getLogger(__name__)
@@ -193,7 +195,9 @@ class Dataset(object):
 		tgt_word_ids = []
 		tgt_sentence_lengths = []
 
-		for idx in range(len(self.src_sentences)):
+		partial_n_sent = int(len(self.src_sentences) * self.data_ratio)
+
+		for idx in range(partial_n_sent):
 			src_sentence = self.src_sentences[idx]
 			tgt_sentence = self.tgt_sentences[idx]
 
@@ -244,6 +248,7 @@ class Dataset(object):
 			tgt_word_ids.append(tgt_ids)
 			tgt_sentence_lengths.append(len(tgt_words)+2) # include BOS, EOS
 
+		self.logger.info("data partition: {}".format(self.data_ratio))
 		self.num_training_sentences = len(src_word_ids)
 		self.logger.info("num_sentences: {}".format(self.num_training_sentences))
 

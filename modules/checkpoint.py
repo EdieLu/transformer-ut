@@ -112,6 +112,29 @@ class Checkpoint(object):
 
         return path
 
+    def save_customise(self, dir):
+
+        """ save to customised dir """
+
+        path = dir
+
+        if os.path.exists(path):
+            shutil.rmtree(path)
+        os.makedirs(path)
+        torch.save({'epoch': self.epoch,
+                    'step': self.step,
+                    'optimizer': self.optimizer
+                   },
+                   os.path.join(path, self.TRAINER_STATE_NAME))
+        torch.save(self.model, os.path.join(path, self.MODEL_NAME))
+
+        with open(os.path.join(path, self.INPUT_VOCAB_FILE), 'wb') as fout:
+            dill.dump(self.input_vocab, fout)
+        with open(os.path.join(path, self.OUTPUT_VOCAB_FILE), 'wb') as fout:
+            dill.dump(self.output_vocab, fout)
+
+        return path
+
     def rm_old(self, experiment_dir, keep_num=3):
 
         checkpoints_path = os.path.join(experiment_dir, self.CHECKPOINT_DIR_NAME)
@@ -173,15 +196,14 @@ class Checkpoint(object):
 
     @classmethod
     def get_secondlast_checkpoint(cls, experiment_path):
-        
+
         checkpoints_path = os.path.join(experiment_path, cls.CHECKPOINT_DIR_NAME)
         all_times = sorted(os.listdir(checkpoints_path), reverse=True)
         return os.path.join(checkpoints_path, all_times[1])
 
     @classmethod
     def get_thirdlast_checkpoint(cls, experiment_path):
-        
+
         checkpoints_path = os.path.join(experiment_path, cls.CHECKPOINT_DIR_NAME)
         all_times = sorted(os.listdir(checkpoints_path), reverse=True)
         return os.path.join(checkpoints_path, all_times[2])
-

@@ -25,9 +25,11 @@ def load_arguments(parser):
 	parser.add_argument('--dev_path_tgt', type=str, default=None, help='dev tgt dir')
 	parser.add_argument('--load_embedding_src', type=str, default=None, help='init src embedding')
 	parser.add_argument('--load_embedding_tgt', type=str, default=None, help='init tgt embedding')
+	parser.add_argument('--data_ratio', type=float, default=1.0, help='data partition being used')
 
 	parser.add_argument('--save', type=str, required=True, help='model save dir')
 	parser.add_argument('--load', type=str, default=None, help='model load dir')
+	parser.add_argument('--load_mode', type=str, default='null', help='loading mode resume|restart|null')
 	parser.add_argument('--use_type', type=str, default='word', help='word | char')
 
 	# model
@@ -51,6 +53,7 @@ def load_arguments(parser):
 
 	# train
 	parser.add_argument('--random_seed', type=int, default=666, help='random seed')
+	parser.add_argument('--gpu_id', type=int, default=0, help='only used for memory reservation')
 	parser.add_argument('--use_gpu', type=str, default='False', help='whether or not using GPU')
 	parser.add_argument('--num_epochs', type=int, default=10, help='number of training epochs')
 	parser.add_argument('--max_seq_len', type=int, default=32, help='maximum sequence length')
@@ -64,6 +67,7 @@ def load_arguments(parser):
 		help='optimiser gradient norm clipping: max grad norm')
 
 	# save and print
+	parser.add_argument('--grab_memory', type=str, default='True', help='grab full GPU memory')
 	parser.add_argument('--checkpoint_every', type=int, default=10, help='save ckpt every n steps')
 	parser.add_argument('--print_every', type=int, default=10, help='print every n steps')
 	parser.add_argument('--eval_mode', type=str, default='tf',
@@ -98,19 +102,18 @@ def main():
 	if not os.path.exists(config['save']):
 		os.makedirs(config['save'])
 
-	# resume or not
+	# loading old models
 	if config['load']:
-		resume = True
-		print('resuming {} ...'.format(config['load']))
+		print('loading {} ...'.format(config['load']))
 		config_save_dir = os.path.join(config['save'], 'model-cont.cfg')
 	else:
-		resume = False
 		config_save_dir = os.path.join(config['save'], 'model.cfg')
 	save_config(config, config_save_dir)
 
 	# contruct trainer
 	t = Trainer(expt_dir=config['save'],
 					load_dir=config['load'],
+					load_mode=config['load_mode'],
 					batch_size=config['batch_size'],
 					checkpoint_every=config['checkpoint_every'],
 					print_every=config['print_every'],
@@ -121,6 +124,7 @@ def main():
 					lr_warmup_steps=config['lr_warmup_steps'],
 					eval_with_mask=config['eval_with_mask'],
 					use_gpu=config['use_gpu'],
+					gpu_id=config['gpu_id'],
 					max_grad_norm=config['max_grad_norm'],
 					max_count_no_improve=config['max_count_no_improve'],
 					max_count_num_rollback=config['max_count_num_rollback'],
@@ -139,6 +143,7 @@ def main():
 		seqrev=config['seqrev'],
 		max_seq_len=config['max_seq_len'],
 		batch_size=config['batch_size'],
+		data_ratio=config['data_ratio'],
 		use_gpu=config['use_gpu'],
 		logger=t.logger,
 		use_type=config['use_type'])
@@ -181,16 +186,15 @@ def main():
 					dec_word2id=train_set.tgt_word2id,
 					enc_id2word=train_set.src_id2word,
 					dec_id2word=train_set.tgt_id2word,
-					transformer_type=config['transformer_type'],
-					use_gpu=config['use_gpu'])
+					transformer_type=config['transformer_type'])
 
 	device = check_device(config['use_gpu'])
 	t.logger.info('device: {}'.format(device))
 	seq2seq = seq2seq.to(device=device)
 
 	# run training
-	seq2seq = t.train(train_set, seq2seq,
-		num_epochs=config['num_epochs'], resume=resume, dev_set=dev_set)
+	seq2seq = t.train(train_set, seq2seq, num_epochs=config['num_epochs'],
+		dev_set=dev_set, grab_memory=config['grab_memory'])
 
 
 if __name__ == '__main__':

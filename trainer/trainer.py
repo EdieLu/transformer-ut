@@ -9,7 +9,7 @@ import sys
 import numpy as np
 import torchtext
 
-from utils.misc import get_memory_alloc, check_device, add2corpus
+from utils.misc import get_memory_alloc, check_device, add2corpus, reserve_memory
 from utils.misc import _convert_to_words_batchfirst, _convert_to_words
 from utils.config import PAD, EOS
 from modules.loss import NLLLoss, BCELoss, CrossEntropyLoss
@@ -26,12 +26,14 @@ class Trainer(object):
 	def __init__(self,
 		expt_dir='experiment',
 		load_dir=None,
+		load_mode='null',
 		checkpoint_every=100,
 		print_every=100,
 		eval_mode='fr',
 		eval_metric='tokacc',
 		batch_size=256,
 		use_gpu=False,
+		gpu_id=0,
 		learning_rate=0.00001,
 		learning_rate_init=0.0005,
 		lr_warmup_steps=16000,
@@ -45,6 +47,7 @@ class Trainer(object):
 		):
 
 		self.use_gpu = use_gpu
+		self.gpu_id = gpu_id
 		self.device = check_device(self.use_gpu)
 
 		self.optimizer = None
@@ -73,6 +76,9 @@ class Trainer(object):
 		if not os.path.exists(self.expt_dir):
 			os.makedirs(self.expt_dir)
 		self.load_dir = load_dir
+		self.load_mode = load_mode
+		if type(self.load_dir) != type(None) and load_mode == 'null':
+			self.load_dir = 'resume' # default to resume
 
 		self.logger = logging.getLogger(__name__)
 		self.writer = torch.utils.tensorboard.writer.SummaryWriter(log_dir=self.expt_dir)
@@ -104,6 +110,11 @@ class Trainer(object):
 
 		""" Learning rate warmup + decay """
 
+		# deactivate scheduler
+		if warmup_steps <= 0:
+			return optimizer
+
+		# activate scheduler
 		if step <= warmup_steps:
 			lr = step * 1. * (peak_lr - init_lr) / warmup_steps + init_lr
 		else:
@@ -218,7 +229,6 @@ class Trainer(object):
 		# import pdb; pdb.set_trace()
 		bleu = torchtext.data.metrics.bleu_score(hyp_corpus, ref_corpus)
 
-		torch.cuda.empty_cache()
 		if total == 0:
 			accuracy = float('nan')
 		else:
@@ -307,7 +317,6 @@ class Trainer(object):
 			loss.acc_loss /= n_minibatch
 			loss.backward()
 			resloss += loss.get_loss()
-			torch.cuda.empty_cache()
 
 		# update weights
 		self.optimizer.step()
@@ -333,6 +342,13 @@ class Trainer(object):
 		# loop over epochs
 		for epoch in range(start_epoch, n_epochs + 1):
 
+			# update lr
+			if self.lr_warmup_steps != 0:
+				self.optimizer.optimizer = self.lr_scheduler(
+					self.optimizer.optimizer, step, init_lr=self.learning_rate_init,
+					peak_lr=self.learning_rate, warmup_steps=self.lr_warmup_steps)
+
+			# print lr
 			for param_group in self.optimizer.optimizer.param_groups:
 				log.info('epoch:{} lr: {}'.format(epoch, param_group['lr']))
 				lr_curr = param_group['lr']
@@ -524,7 +540,8 @@ class Trainer(object):
 			break
 
 
-	def train(self, train_set, model, num_epochs=5, resume=False, optimizer=None, dev_set=None):
+	def train(self, train_set, model, num_epochs=5, optimizer=None,
+		dev_set=None, grab_memory=True):
 
 		"""
 			Run training for a given model.
@@ -541,10 +558,13 @@ class Trainer(object):
 				model (seq2seq.models): trained model.
 		"""
 
-		torch.cuda.empty_cache()
-		if resume:
+		if 'resume' in self.load_mode or 'restart' in self.load_mode:
+
+			assert type(self.load_dir) != type(None)
+			
+			# resume training
 			latest_checkpoint_path = self.load_dir
-			self.logger.info('resuming {} ...'.format(latest_checkpoint_path))
+			self.logger.info('{} {} ...'.format(self.load_mode, latest_checkpoint_path))
 			resume_checkpoint = Checkpoint.load(latest_checkpoint_path)
 			model = resume_checkpoint.model
 			self.logger.info(model)
@@ -560,13 +580,15 @@ class Trainer(object):
 			for name, param in model.named_parameters():
 				log = self.logger.info('{}:{}'.format(name, param.size()))
 
-			# start from prev
-			start_epoch = resume_checkpoint.epoch
-			step = resume_checkpoint.step
-
-			# just for the sake of finetuning
-			# start_epoch = 1
-			# step = 0
+			# set step/epoch
+			if 'resume' in self.load_mode:
+				# start from prev
+				start_epoch = resume_checkpoint.epoch # start from the saved epoch!
+				step = resume_checkpoint.step# start from the saved step!
+			elif 'restart' in self.load_mode:
+				# just for the sake of finetuning
+				start_epoch = 1
+				step = 0
 
 		else:
 			start_epoch = 1
@@ -583,6 +605,11 @@ class Trainer(object):
 
 		self.logger.info("Optimizer: %s, Scheduler: %s" %
 			(self.optimizer.optimizer, self.optimizer.scheduler))
+
+		# reserve memory
+		# import pdb; pdb.set_trace()
+		if self.device == torch.device('cuda') and grab_memory:
+			reserve_memory(device_id=self.gpu_id)
 
 		self._train_epochs(train_set, model, num_epochs, start_epoch, step, dev_set=dev_set)
 

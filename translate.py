@@ -9,7 +9,8 @@ import numpy as np
 
 from utils.dataset import Dataset
 from utils.misc import save_config, validate_config
-from utils.misc import get_memory_alloc, plot_alignment, check_device, combine_weights
+from utils.misc import get_memory_alloc, log_ckpts
+from utils.misc import plot_alignment, check_device, combine_weights
 from utils.misc import _convert_to_words_batchfirst, _convert_to_words, _convert_to_tensor
 from utils.config import PAD, EOS
 from modules.checkpoint import Checkpoint
@@ -40,6 +41,7 @@ def load_arguments(parser):
 	parser.add_argument('--use_type', type=str, default='word', help='word | char')
 
 	return parser
+
 
 def translate_logp(test_set, model, test_path_out, use_gpu,
 	max_seq_len, device, seqrev=False):
@@ -128,7 +130,7 @@ def translate_logp(test_set, model, test_path_out, use_gpu,
 							else:
 								words.append(word)
 								logp_sum += logp
-								
+
 						if 'logp_ave' not in locals():
 								logp_ave = 1. * logp_sum / len(words)
 
@@ -272,13 +274,13 @@ def main():
 	seqrev = config['seqrev']
 	use_type = config['use_type']
 
-	if not os.path.exists(test_path_out):
-		os.makedirs(test_path_out)
-	config_save_dir = os.path.join(test_path_out, 'eval.cfg')
-	save_config(config, config_save_dir)
-
-	# set test mode: 1 = translate; 2 = plot
+	# set test mode: 1 = translate; 2 = plot; 3 = save comb ckpt
 	MODE = config['eval_mode']
+	if MODE != 3:
+		if not os.path.exists(test_path_out):
+			os.makedirs(test_path_out)
+		config_save_dir = os.path.join(test_path_out, 'eval.cfg')
+		save_config(config, config_save_dir)
 
 	# check device:
 	device = check_device(use_gpu)
@@ -301,7 +303,7 @@ def main():
 	test_set = Dataset(test_path_src, test_path_tgt,
 						vocab_src_list=vocab_src, vocab_tgt_list=vocab_tgt,
 						seqrev=seqrev,
-						max_seq_len=max_seq_len,
+						max_seq_len=900,
 						batch_size=batch_size,
 						use_gpu=use_gpu,
 						use_type=use_type)
@@ -313,9 +315,21 @@ def main():
 	if MODE == 1:
 		translate(test_set, model, test_path_out, use_gpu,
 			max_seq_len, beam_width, device, seqrev=seqrev)
+
 	elif MODE == 2: # output posterior
 		translate_logp(test_set, model, test_path_out, use_gpu,
 			max_seq_len, device, seqrev=seqrev)
+
+	elif MODE == 3: # save combined model
+		ckpt = Checkpoint(model=model,
+				   optimizer=None, epoch=0, step=0,
+				   input_vocab=test_set.vocab_src,
+				   output_vocab=test_set.vocab_tgt)
+		saved_path = ckpt.save_customise(
+			os.path.join(config['combine_path'].strip('/')+'-combine','combine'))
+		log_ckpts(config['combine_path'], config['combine_path'].strip('/')+'-combine')
+		print('saving at {} ... '.format(saved_path))
+
 
 
 if __name__ == '__main__':

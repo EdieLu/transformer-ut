@@ -13,6 +13,22 @@ import matplotlib.pyplot as plt
 from modules.checkpoint import Checkpoint
 
 
+def reserve_memory(device_id=0):
+
+	# import pdb; pdb.set_trace()
+	total, used = os.popen('"nvidia-smi" --query-gpu=memory.total,memory.used \
+		--format=csv,nounits,noheader').read().split('\n')[device_id].split(",")
+
+	total = int(total)
+	used = int(used)
+
+	max_mem = int(total * 0.85)
+	block_mem = max_mem - used
+
+	x = torch.rand((256,1024,block_mem)).cuda()
+	x = torch.rand((2,2)).cuda()
+
+
 def add2corpus(hyp, ref, dict, hyp_corpus, ref_corpus, type='char'):
 
 	""" map list of hyp/ref id to word lis; add to corpus """
@@ -94,6 +110,14 @@ def combine_weights(path):
 	return model
 
 
+def log_ckpts(ckpt_path, out_path):
+
+	f = open(os.path.join(out_path,'ckpts.log'), 'w')
+	for ckpt in sorted(os.listdir(ckpt_path)):
+		f.write('{}\n'.format(ckpt))
+	f.close()
+
+	
 def check_device(use_gpu):
 
 	""" set device """
