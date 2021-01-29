@@ -30,7 +30,8 @@ def load_arguments(parser):
 	parser.add_argument('--save', type=str, required=True, help='model save dir')
 	parser.add_argument('--load', type=str, default=None, help='model load dir')
 	parser.add_argument('--load_mode', type=str, default='null', help='loading mode resume|restart|null')
-	parser.add_argument('--use_type', type=str, default='word', help='word | char')
+	parser.add_argument('--use_type', type=str, default='word', help='word | char - tgt')
+	parser.add_argument('--use_type_src', type=str, default='word', help='word | char - src')
 
 	# model
 	parser.add_argument('--share_embedder', type=str, default='False', help='share embedder or not')
@@ -146,7 +147,8 @@ def main():
 		data_ratio=config['data_ratio'],
 		use_gpu=config['use_gpu'],
 		logger=t.logger,
-		use_type=config['use_type'])
+		use_type=config['use_type'],
+		use_type_src=config['use_type_src'])
 
 	vocab_size_enc = len(train_set.vocab_src)
 	vocab_size_dec = len(train_set.vocab_tgt)
@@ -162,7 +164,8 @@ def main():
 			batch_size=config['batch_size'],
 			use_gpu=config['use_gpu'],
 			logger=t.logger,
-			use_type=config['use_type'])
+			use_type=config['use_type'],
+			use_type_src=config['use_type_src'])
 	else:
 		dev_set = None
 
@@ -187,6 +190,10 @@ def main():
 					enc_id2word=train_set.src_id2word,
 					dec_id2word=train_set.tgt_id2word,
 					transformer_type=config['transformer_type'])
+
+	# import pdb; pdb.set_trace()
+	t.logger.info("total #parameters:{}".format(sum(p.numel() for p in
+		seq2seq.parameters() if p.requires_grad)))
 
 	device = check_device(config['use_gpu'])
 	t.logger.info('device: {}'.format(device))

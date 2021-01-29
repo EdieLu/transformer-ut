@@ -214,7 +214,9 @@ def translate(test_set, model, test_path_out, use_gpu,
 						preds = model.forward_translate(src=src_ids_sub,
 								beam_width=beam_width, use_gpu=use_gpu)
 					else:
-						preds = model.forward_translate_fast(src=src_ids_sub,
+						# preds = model.forward_translate_fast(src=src_ids_sub,
+						# 			beam_width=beam_width, use_gpu=use_gpu)
+						preds = model.forward_translate(src=src_ids_sub,
 									beam_width=beam_width, use_gpu=use_gpu)
 					time2 = time.time()
 					print('comp time: ', time2-time1)

@@ -561,7 +561,7 @@ class Trainer(object):
 		if 'resume' in self.load_mode or 'restart' in self.load_mode:
 
 			assert type(self.load_dir) != type(None)
-			
+
 			# resume training
 			latest_checkpoint_path = self.load_dir
 			self.logger.info('{} {} ...'.format(self.load_mode, latest_checkpoint_path))
@@ -569,6 +569,9 @@ class Trainer(object):
 			model = resume_checkpoint.model
 			self.logger.info(model)
 			self.optimizer = resume_checkpoint.optimizer
+			if self.optimizer is None:
+				self.optimizer = Optimizer(torch.optim.Adam(model.parameters(),
+					lr=self.learning_rate_init), max_grad_norm=self.max_grad_norm)
 
 			# A walk around to set optimizing parameters properly
 			resume_optim = self.optimizer.optimizer

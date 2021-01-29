@@ -78,6 +78,7 @@ class Dataset(object):
 		logger=None,
 		seqrev=False,
 		use_type='word',
+		use_type_src='word',
 		data_ratio=1.0
 		):
 
@@ -95,6 +96,7 @@ class Dataset(object):
 		self.logger = logger
 		self.seqrev = seqrev
 		self.use_type = use_type
+		self.use_type_src = use_type_src
 		self.data_ratio = data_ratio
 
 		if type(self.logger) == type(None):
@@ -201,18 +203,23 @@ class Dataset(object):
 			src_sentence = self.src_sentences[idx]
 			tgt_sentence = self.tgt_sentences[idx]
 
-			# only apply on tgt side
-			src_words = src_sentence.strip().split()
+			# src
+			if self.use_type_src == 'char':
+				src_words = src_sentence.strip()
+			elif self.use_type_src == 'word':
+				src_words = src_sentence.strip().split()
+			# tgt
 			if self.use_type == 'char':
 				tgt_words = tgt_sentence.strip()
 			elif self.use_type == 'word':
 				tgt_words = tgt_sentence.strip().split()
 
 			# ignore long seq of words
-			if len(src_words) > self.max_seq_len - 1 or len(tgt_words) > self.max_seq_len - 2:
-				# src + EOS
-				# BOS + tgt + EOS
-				continue
+			if len(src_words) > self.max_seq_len - 1 or \
+				len(tgt_words) > self.max_seq_len - 2:
+					# src + EOS
+					# BOS + tgt + EOS
+					continue
 
 			# emtry seq
 			# if len(src_words) == 0 or len(tgt_words) == 0:
@@ -222,7 +229,7 @@ class Dataset(object):
 			src_ids = []
 			for i, word in enumerate(src_words):
 				if word == ' ':
-					assert self.use_type == 'char'
+					assert self.use_type_src == 'char'
 					src_ids.append(SPC)
 				elif word in self.src_word2id:
 					src_ids.append(self.src_word2id[word])
